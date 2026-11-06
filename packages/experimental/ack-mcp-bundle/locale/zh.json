@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ACK 集群",
+    "description": "调用本集群里共用的只读 ACK MCP 服务。"
+  }
+}

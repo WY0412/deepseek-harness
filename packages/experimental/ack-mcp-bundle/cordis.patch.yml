@@ -1,0 +1,9 @@
+- insert:
+    - id: mcp-ack
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: ack
+        transport: streamable-http
+        url: http://dsh-ack-mcp.dsh.svc:8000/mcp
+        toolCallTimeoutMs: 60000
+        failOnStartupError: false

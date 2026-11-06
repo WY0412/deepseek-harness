@@ -41,6 +41,7 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`ralph-bundle`](ralph-bundle/README.md) | Optional repeated delegation with an isolated workflow engine | — |
 | [`terminal-bundle`](terminal-bundle/README.md) | Optional global persistent terminal tools | — |
 | [`badge-skill-bundle`](badge-skill-bundle/README.md) | Optional powered-by-dsh badge skill | — |
+| [`ack-mcp-bundle`](ack-mcp-bundle/README.md) | Optional shared ACK cluster MCP client | — |
 | [`session-titles-bundle`](session-titles-bundle/README.md) | Optional titles following human prompts in a conversation | — |
 | [`hook-protocol`](hook-protocol/README.md) | Hook bridge wire types and durable events | — |
 | [`hooks-claude-code`](hooks-claude-code/README.md) | Claude Code hook bridge | — |

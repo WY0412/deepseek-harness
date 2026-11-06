@@ -41,6 +41,7 @@ kind: "package-group"
 | [`ralph-bundle`](ralph-bundle/README.zh.md) | 带隔离 workflow 引擎的可选重复委派 | — |
 | [`terminal-bundle`](terminal-bundle/README.zh.md) | 可选全局持久终端工具 | — |
 | [`badge-skill-bundle`](badge-skill-bundle/README.zh.md) | 可选 powered-by-dsh 徽章技能 | — |
+| [`ack-mcp-bundle`](ack-mcp-bundle/README.zh.md) | 可选的共用 ACK 集群 MCP 客户端 | — |
 | [`session-titles-bundle`](session-titles-bundle/README.zh.md) | 随对话中人类提示更新的可选标题 | — |
 | [`hook-protocol`](hook-protocol/README.zh.md) | 钩子桥接的通信类型与持久事件 | — |
 | [`hooks-claude-code`](hooks-claude-code/README.zh.md) | Claude Code 钩子桥接 | — |

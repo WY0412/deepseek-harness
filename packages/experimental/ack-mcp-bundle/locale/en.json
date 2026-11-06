@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ACK cluster",
+    "description": "Call the shared read-only ACK MCP server in this cluster."
+  }
+}

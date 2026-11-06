@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/ack-mcp-bundle/README.md
+/:
+  en: 965d6ec0a7ee6543
+  zh: 07f069b4d3187348
+/deepseek-ai-dsh-experimental-ack-mcp-bundle:
+  en: fbcf34ca170e5876
+  zh: db45a2cd6c99eb0f
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/summary:
+  en: 659d9e6acb795343
+  zh: 93baf3161a51f985
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 988e839059414d27
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/use-this-package:
+  en: 55cf855a77efc820
+  zh: 4d51475a49e66dc7
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/understand-the-implementation:
+  en: a45c04c078de8d12
+  zh: d1c73190c879ce6e
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/further-exploration:
+  en: 50afc2f7c8f46100
+  zh: 42c43b27a8ad7b29
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/model-experience:
+  en: fa74a31c28af6222
+  zh: 92029a6f5078ecdf
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/model-experience/kv-cache-effect:
+  en: c8ddee7bc4eb65ce
+  zh: 57ea43a539b5d9cf
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/known-limitations-and-deferred-work:
+  en: 11e80c3c2d9dbd4e
+  zh: a4e1a76a512c27ae
+/deepseek-ai-dsh-experimental-ack-mcp-bundle/known-limitations-and-deferred-work/dev-note:
+  en: 279d01435256cd2a
+  zh: 83780964e5de2f54
