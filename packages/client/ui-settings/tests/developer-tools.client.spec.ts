@@ -63,6 +63,50 @@ describe('developer tools settings', () => {
     expect(ctx.configForms.developerTools.enabled.getSnapshot()).toBe(false)
   })
 
+  it('reads host settings when the page hostname is an injected trusted host', async () => {
+    vi.stubGlobal('location', { hostname: 'dshk8syw.com' })
+    vi.stubGlobal('__DSH_TRUSTED_HOSTS__', ['dshk8syw.com'])
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    const describeCall = vi.fn(() => Promise.resolve({
+      ok: true, value: { writable: true, hasDocument: false, namespaces: [] },
+    }))
+    const remote = new TestRemote(ctx, { settings: { describe: describeCall } })
+    remote.$host = { home: undefined, isLoopback: false }
+    await ctx.plugin({ inject, apply: clientApply }).await()
+    await ctx.configForms.describe().ensure()
+    expect(describeCall).toHaveBeenCalled()
+    expect(ctx.configForms.developerTools.enabled.getSnapshot()).toBe(false)
+  })
+
+  it('keeps a remote page in memory when the trusted-host global is not a list', async () => {
+    vi.stubGlobal('location', { hostname: 'dshk8syw.com' })
+    vi.stubGlobal('__DSH_TRUSTED_HOSTS__', 'dshk8syw.com')
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    const describeCall = vi.fn()
+    const remote = new TestRemote(ctx, { settings: { describe: describeCall } })
+    remote.$host = { home: undefined, isLoopback: false }
+    await ctx.plugin({ inject, apply: clientApply }).await()
+    await ctx.configForms.describe().ensure()
+    expect(describeCall).not.toHaveBeenCalled()
+    expect(ctx.configForms.developerTools.enabled.getSnapshot()).toBe(true)
+  })
+
+  it('keeps a remote page in memory when its hostname is not trusted', async () => {
+    vi.stubGlobal('location', { hostname: '192.0.2.20' })
+    vi.stubGlobal('__DSH_TRUSTED_HOSTS__', ['dshk8syw.com'])
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    const describeCall = vi.fn()
+    const remote = new TestRemote(ctx, { settings: { describe: describeCall } })
+    remote.$host = { home: undefined, isLoopback: false }
+    await ctx.plugin({ inject, apply: clientApply }).await()
+    await ctx.configForms.describe().ensure()
+    expect(describeCall).not.toHaveBeenCalled()
+    expect(ctx.configForms.developerTools.enabled.getSnapshot()).toBe(true)
+  })
+
   it('shares one remote-browser preference across consumers and disposes it with the plugin', async () => {
     const ctx = new Context()
     onTestFinished(() => ctx.fiber.dispose())

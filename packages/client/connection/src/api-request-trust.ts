@@ -95,6 +95,24 @@ export function isRemoteAuthority(entry: string): boolean {
 }
 
 /**
+ * Hostnames a browser page can show for these authorities. `location.hostname`
+ * has no port, and IPv6 literals keep their brackets; both match `URL.hostname`.
+ * @param entries - validated `trustedHosts` values.
+ * @returns unique hostnames in entry order.
+ */
+export function trustedPageHostnames(entries: readonly string[]): readonly string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    const url = parseAuthority(entry)
+    if (url === undefined || seen.has(url.hostname)) continue
+    seen.add(url.hostname)
+    names.push(url.hostname)
+  }
+  return names
+}
+
+/**
  * Whether a parsed authority names the deployment's own bind address. A browser
  * dialing that literal sends it as Host, and accepting it grants nothing
  * further: the literal is no rebinding target, the Origin and cross-site checks

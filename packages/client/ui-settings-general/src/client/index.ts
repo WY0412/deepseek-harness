@@ -99,6 +99,8 @@ export function apply(ctx: ClientContext): void {
   // locale/change re-registration wiring.
   const t = ctx.locale.bind(NS)
   // The shared ConfigForm mirror updates after document commits and reconnects.
+  // Trusted-host pages use that mirror for settings, but this action opens a
+  // file on the machine running dsh, so it stays on a real loopback page.
   const documentController = ctx.remote.$host.isLoopback
     ? new SettingsDocumentStore(ctx, ctx.configForms.describe())
     : undefined

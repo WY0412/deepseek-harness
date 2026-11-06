@@ -1,0 +1,63 @@
+# Build this fork's dsh and push a runtime image. The pool image starts FROM
+# this image and adds the supervisor. Push to master, or run the workflow by hand.
+name: image
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  REGISTRY: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com
+  IMAGE: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com/dsh_wy0412/dsh-harness
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  push:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build:official
+
+      - name: Pack
+        run: |
+          pnpm run release:pack --family dsh --out dist/npm --concurrency 8
+          pnpm run release:pack --family vendor --out dist/npm-vendor --concurrency 8
+          pnpm --dir native/system run build:ts
+          mkdir -p dist/npm-landlock
+          pnpm --dir native/system/packages/entry pack --pack-destination "$PWD/dist/npm-landlock"
+
+      - name: Assemble runtime
+        run: node deploy/install-runtime.mjs deploy/image-root dist/npm dist/npm-vendor dist/npm-landlock
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Place the runtime Dockerfile beside the install
+        run: cp deploy/Dockerfile deploy/image-root/Dockerfile
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: deploy/image-root
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:master

@@ -257,6 +257,19 @@ describe('connection node half', () => {
     }
   })
 
+  it('injects trusted-host page hostnames without their ports', async () => {
+    const { ctx, dispose } = await mounted({ trustedHosts: ['dshk8syw.com:443', 'Lab.Internal', 'dshk8syw.com'] })
+    try {
+      const rows: IndexInjection[] = []
+      ctx.emit('webserver/index-inject', rows)
+      expect(rows.find(row => row.kind === 'global' && row.name === '__DSH_TRUSTED_HOSTS__')).toEqual({
+        kind: 'global', name: '__DSH_TRUSTED_HOSTS__', value: ['dshk8syw.com', 'lab.internal'],
+      })
+    } finally {
+      await dispose()
+    }
+  })
+
   it('injects validated browser recovery timing and withdraws it on disposal', async () => {
     const { ctx, dispose } = await mounted({ recovery: { generationReadyTimeoutMs: 25_000 } })
     try {
@@ -267,6 +280,8 @@ describe('connection node half', () => {
           backoffBaseMs: 500, backoffFactor: 2, backoffMaxMs: 10_000,
           generationReadyWarnMs: 3_000, generationReadyTimeoutMs: 25_000,
         },
+      }, {
+        kind: 'global', name: '__DSH_TRUSTED_HOSTS__', value: [],
       }])
       await dispose()
       const after: IndexInjection[] = []

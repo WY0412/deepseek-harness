@@ -1,7 +1,7 @@
 /** Behavior of the /api browser-trust fence (rebinding + cross-site defense). */
 
 import { describe, expect, it } from 'vitest'
-import { assertTrustedAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
+import { assertTrustedAuthority, isTrustedApiRequest, trustedPageHostnames } from '../src/api-request-trust.ts'
 
 function request(headers: Record<string, string | undefined>): { headers: Record<string, string | undefined> } {
   return { headers }
@@ -157,5 +157,13 @@ describe('isTrustedApiRequest', () => {
     expect(isTrustedApiRequest(request({ ...markers, host: 'bad host' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '127.0.0.999' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '128.0.0.1' }), [])).toBe(false)
+  })
+})
+
+describe('trustedPageHostnames', () => {
+  it('keeps unique hostnames and drops a value that is not an authority', () => {
+    expect(trustedPageHostnames(['dshk8syw.com:443', 'Lab.Internal', 'dshk8syw.com', 'not a host'])).toEqual([
+      'dshk8syw.com', 'lab.internal',
+    ])
   })
 })

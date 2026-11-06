@@ -30,13 +30,30 @@ export type {
  */
 export const inject = ['remote', 'remote.settings']
 
+/** Global the Host writes with the hostnames of `trustedHosts`. */
+const TRUSTED_HOSTS_GLOBAL = '__DSH_TRUSTED_HOSTS__'
+
+/**
+ * Whether this page may read and write the Host settings document.
+ * Loopback always may. A trusted-host page may too: the Host injected that
+ * hostname, and the API fence already accepts the same list. Opening the
+ * settings file stays on the loopback flag alone.
+ * @param isLoopback - page authority from the connected Host facts.
+ */
+function pageUsesHostSettings(isLoopback: boolean): boolean {
+  if (isLoopback) return true
+  const hostname = typeof location === 'undefined' ? '' : location.hostname
+  const listed = (globalThis as Record<string, unknown>)[TRUSTED_HOSTS_GLOBAL]
+  return hostname !== '' && Array.isArray(listed) && listed.includes(hostname)
+}
+
 /** Provide shared forms and refresh them on document changes and reconnects.
  * @param ctx Client provider context.
  */
 export function apply(ctx: Context): void {
   const schema = new SettingsSchemaService(ctx)
   // Every form uses the persistence mode resolved from the connected Host.
-  const persistence = ctx.remote.$host.isLoopback ? 'host' : 'memory'
+  const persistence = pageUsesHostSettings(ctx.remote.$host.isLoopback) ? 'host' : 'memory'
   const mirror = new SettingsDescribeMirror(ctx, persistence)
   ctx.effect(() => {
     const disposers = [
