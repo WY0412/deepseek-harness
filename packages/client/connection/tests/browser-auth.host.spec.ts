@@ -267,8 +267,12 @@ describe('BrowserAuth', () => {
 
     await store.deleteRecord()
     expect(auth.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: first.cookie }))).toBe(true)
-    const sameActivation = exchange(auth)
-    expect(auth.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: sameActivation.cookie }))).toBe(true)
+    const again = new URL(first.launchUrl)
+    const reused = response()
+    expect(auth.authorizeIndex(request(`${again.pathname}${again.search}`, '127.0.0.1:3080'), reused.value)).toBe(false)
+    expect(reused.state.status).toBe(401)
+    expect(reused.state.headers?.['set-cookie']).toBeUndefined()
+    expect(auth.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: first.cookie }))).toBe(true)
     expect(store).toMatchObject({ reads: 0, modifies: 1 })
 
     const reactivated = await createAuth(store)

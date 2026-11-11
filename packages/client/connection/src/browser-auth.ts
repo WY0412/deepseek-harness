@@ -18,6 +18,8 @@ const COOKIE_PAYLOAD_VERSION = 1
 const STORED_SECRET_VERSION = 1
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
 const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
+/** Survives a Connection reload of the same process owner. A second GET /?token= must not mint. */
+const PROCESS_LAUNCH_USED = new WeakMap<object, true>()
 
 interface StoredSecretPayload {
   readonly version: typeof STORED_SECRET_VERSION
@@ -195,7 +197,7 @@ export class BrowserAuth {
   private readonly maxAgeMilliseconds: number
 
   private constructor(
-    processOwner: object,
+    private readonly processOwner: object,
     private readonly secret: Buffer,
     maxAgeDays: number,
   ) {
@@ -254,7 +256,8 @@ export class BrowserAuth {
     if (tokens.length > 0) {
       const authority = requestAudience(req.headers, secure)
       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
-        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
+        && authority !== undefined && !PROCESS_LAUNCH_USED.has(this.processOwner)
+        && tokenMatches(tokens.join(''), this.launchToken)) {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
@@ -263,6 +266,9 @@ export class BrowserAuth {
           issuedAt,
           expiresAt,
         }, this.secret)
+        PROCESS_LAUNCH_USED.set(this.processOwner, true)
+        // Not a launch URL. tokenFromLine ignores a line that is not a URL with ?token=.
+        console.log('dsh web: entry used')
         res.writeHead(303, {
           'cache-control': 'no-store',
           'location': './',
@@ -317,8 +323,10 @@ export class BrowserAuth {
       'cache-control': 'no-store',
       'content-type': 'text/plain; charset=utf-8',
     })
+    const reenter = process.env.DSH_REENTER_URL
+    const link = typeof reenter === 'string' && reenter.startsWith('https://') ? `重新进入 ${reenter}\n` : ''
     res.end(req.method === 'HEAD'
       ? undefined
-      : 'dsh web authentication required; reopen the URL printed by dsh web.\n')
+      : `dsh web authentication required; reopen the URL printed by dsh web.\n${link}`)
   }
 }

@@ -19,6 +19,7 @@ import z from '@deepseek-ai/schemastery'
 import compressionMiddleware from 'compression'
 import ipaddr from 'ipaddr.js'
 import Negotiator from 'negotiator'
+import { noteActivity } from './activity.ts'
 import { renderIndexInjections, type IndexInjection } from './injections.ts'
 
 export { renderIndexInjections } from './injections.ts'
@@ -387,10 +388,23 @@ export class WebServer extends Service {
 
   /** Listen; resolves once the socket is bound (rejection = FAILED fiber). */
   async [Service.init](): Promise<void> {
+    const origin = process.env.DSH_OCCUPANCY_ORIGIN
+    if (typeof origin === 'string' && /^https:\/\/[a-z0-9.-]+$/u.test(origin)) {
+      const tag = `<script src="${origin}/occupancy.js" defer></script>`
+      this.tapIndex(html => html.includes('/occupancy.js')
+        ? html
+        : html.includes('</body>') ? html.replace('</body>', `${tag}</body>`) : `${html}${tag}`)
+    }
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */
       const rawPath = new URL(req.url ?? '/', 'http://x').pathname
+      if (req.method === 'GET' && rawPath === '/healthz') {
+        res.writeHead(200, { 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
+      noteActivity()
       const route = this.match(rawPath)
       if (route !== undefined) {
         await route.handler(req, res)
@@ -446,6 +460,7 @@ export class WebServer extends Service {
         })
       }
       this.server.on('upgrade', (req, socket, head) => {
+        noteActivity()
         const onError = (error: Error): void => {
           this.ctx.logger.warn(error)
           socket.destroy()
