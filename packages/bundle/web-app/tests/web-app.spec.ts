@@ -333,12 +333,12 @@ describe('web-app runtime glue', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     apply(ctx, new Config({ openBrowser: false, printUrl: true, surfaceContext: true }))
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(log).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledTimes(2)
 
     await first.dispose()
     await ctx.plugin((connectionCtx: Context) => { provideConnection(connectionCtx) })
     await new Promise(resolve => setTimeout(resolve, 0))
-    expect(log).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledTimes(2)
     await ctx.fiber.dispose()
   })
 

@@ -20,6 +20,7 @@ import compressionMiddleware from 'compression'
 import ipaddr from 'ipaddr.js'
 import Negotiator from 'negotiator'
 import { noteActivity } from './activity.ts'
+import { noteConnected } from './slo.ts'
 import { renderIndexInjections, type IndexInjection } from './injections.ts'
 
 export { renderIndexInjections } from './injections.ts'
@@ -405,6 +406,7 @@ export class WebServer extends Service {
         return
       }
       noteActivity()
+      noteConnected()
       const route = this.match(rawPath)
       if (route !== undefined) {
         await route.handler(req, res)
@@ -461,6 +463,7 @@ export class WebServer extends Service {
       }
       this.server.on('upgrade', (req, socket, head) => {
         noteActivity()
+        noteConnected()
         const onError = (error: Error): void => {
           this.ctx.logger.warn(error)
           socket.destroy()

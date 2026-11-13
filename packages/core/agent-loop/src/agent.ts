@@ -36,6 +36,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ReactLoopInbox } from './inbox.ts'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { AssistantStreamAttempt } from './assistant-stream.ts'
+import { sloExcludeUnseen, sloFinish, sloLooksUnconfigured, sloSee, sloTurnOpen } from './slo.ts'
 import { SystemPromptProjection } from './runtime-context.ts'
 import { executeToolCalls } from './tool-calls.ts'
 
@@ -115,6 +116,7 @@ export class ReactLoopAgent implements Agent {
   /** Process-local revision of assistant frames for this attached Session. */
   private assistantStreamRevision = 0
   private assistantAttemptCounter = 0
+  private sloId: number | undefined
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
@@ -305,6 +307,7 @@ export class ReactLoopAgent implements Agent {
     const turn = phase.turn + 1
     try {
       this.session.append('turn/start', { turn })
+      this.sloId = sloTurnOpen()
     } catch (error: unknown) {
       this.throwError(error)
     }
@@ -369,9 +372,14 @@ export class ReactLoopAgent implements Agent {
       // A cause is present exactly while the signal is aborted.
       const cause = abortedCancelCause(signal)
       if (cause !== undefined) {
+        sloExcludeUnseen(this.sloId)
         turnEnds = { kind: 'aborted', reason: cause }
         throw error
       }
+      const failureText = error instanceof LlmError
+        ? `${error.failure.message} ${error.failure.code}`
+        : error instanceof Error ? error.message : ''
+      if (sloLooksUnconfigured(failureText)) sloExcludeUnseen(this.sloId)
       // Every failure is structured: an `LlmError` keeps its facts, anything
       // else flattens to `errorChain` text under the `UNKNOWN` code.
       turnEnds = {
@@ -382,6 +390,8 @@ export class ReactLoopAgent implements Agent {
       }
       this.throwError(error)
     } finally {
+      sloFinish(this.sloId)
+      this.sloId = undefined
       try {
         // oxlint-disable-next-line typescript/no-non-null-assertion -- every exit assigns a turn ending
         this.session.append('turn/end', { turn, reason: turnEnds! })
@@ -455,6 +465,7 @@ export class ReactLoopAgent implements Agent {
         live.start()
         started = true
         for await (const chunk of stream) {
+          sloSee(this.sloId, chunk)
           signal.throwIfAborted()
           live.push(chunk)
         }

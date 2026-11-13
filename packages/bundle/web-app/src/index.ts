@@ -278,6 +278,7 @@ export function apply(ctx: Context, config: Config): void {
         ANNOUNCED_ROOTS.add(connectionCtx.root)
         if (config.printUrl) {
           console.log(`dsh web: ${authenticatedUrl}`)
+          console.log('dsh slo: ready')
         }
         if (handoffBrowser) {
           console.log('dsh web: opening the default browser; pass --no-open to disable')
