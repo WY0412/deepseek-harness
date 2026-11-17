@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-ack-credentials/README.md
+/:
+  en: 92aa9815caa58175
+  zh: 40863f93dc39b1f1
+/deepseek-ai-dsh-client-ui-ack-credentials:
+  en: a838034be8cd3370
+  zh: e2aae48608eeeb08
+/deepseek-ai-dsh-client-ui-ack-credentials/summary:
+  en: 9b408502800c4bc0
+  zh: e56761e9f240a6b9
+/deepseek-ai-dsh-client-ui-ack-credentials/use-this-package:
+  en: 3b5ba009f4588e5a
+  zh: af806f1674331c26

@@ -252,6 +252,29 @@ async function readTlsFile(field: 'certFile' | 'keyFile', path: string): Promise
   return content
 }
 
+const HTTPS_ORIGIN = /^https:\/\/[a-z0-9.-]+$/u
+
+/**
+ * Insert the control-plane origin and the occupancy script into one index body.
+ * An absent or non-HTTPS origin leaves the body unchanged.
+ * @param html - index body before this tap.
+ * @param origin - `DSH_OCCUPANCY_ORIGIN`, captured when the server starts.
+ * @returns the body with the meta and script, or the original body.
+ */
+export function occupancyIndex(html: string, origin: string | undefined): string {
+  if (typeof origin !== 'string' || !HTTPS_ORIGIN.test(origin)) return html
+  let next = html
+  if (!next.includes('name="dsh-control-origin"')) {
+    const meta = `<meta name="dsh-control-origin" content="${origin}">`
+    next = next.includes('</head>') ? next.replace('</head>', `${meta}</head>`) : `${meta}${next}`
+  }
+  if (!next.includes('/occupancy.js')) {
+    const tag = `<script src="${origin}/occupancy.js" defer></script>`
+    next = next.includes('</body>') ? next.replace('</body>', `${tag}</body>`) : `${next}${tag}`
+  }
+  return next
+}
+
 /**
  * The browser HTTP carrier service. Activation loads any configured TLS
  * material, then listens immediately; a material or listen failure rejects
@@ -390,12 +413,7 @@ export class WebServer extends Service {
   /** Listen; resolves once the socket is bound (rejection = FAILED fiber). */
   async [Service.init](): Promise<void> {
     const origin = process.env.DSH_OCCUPANCY_ORIGIN
-    if (typeof origin === 'string' && /^https:\/\/[a-z0-9.-]+$/u.test(origin)) {
-      const tag = `<script src="${origin}/occupancy.js" defer></script>`
-      this.tapIndex(html => html.includes('/occupancy.js')
-        ? html
-        : html.includes('</body>') ? html.replace('</body>', `${tag}</body>`) : `${html}${tag}`)
-    }
+    this.tapIndex(html => occupancyIndex(html, origin))
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */

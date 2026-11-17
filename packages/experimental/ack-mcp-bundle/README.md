@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Offer the cluster's shared ACK MCP server to Web chat. It ships switched off. Select it in Plugins to enable it. The address is fixed; the page has no URL field.
+Offer the cluster's shared ACK MCP server to Web chat. It ships switched off. Select it in Plugins to enable it. The Aliyun key and GitHub token are entered on this plugin's page. The address is fixed; the page has no URL field.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Offer the cluster's shared ACK MCP server to Web chat. It ships switched off. Se
 <a id="use-this-package"></a>
 ## Use this package
 
-In Web, open Plugins and enable **ACK cluster** in Official. Switch it off to remove its profile layer.
+In Web, open Plugins and enable **ACK cluster** in Official. Switch it off to remove the MCP profile layer. The Aliyun key and GitHub token stay on this plugin's detail page and can still be saved while it is off. The address is fixed; the page has no URL field.
 
 The switch mounts one Host MCP client at `http://dsh-ack-mcp.dsh.svc:8000/mcp`. A failed connection does not stop chat from starting.
 

@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context, FiberState } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import HttpServer, { isLoopbackHost, normalizeBindAddress, renderIndexInjections, type TlsConfig } from '../src/index.ts'
+import HttpServer, { isLoopbackHost, normalizeBindAddress, occupancyIndex, renderIndexInjections, type TlsConfig } from '../src/index.ts'
 import { materializeTlsFixture, type TlsFixture } from './tls-fixture.ts'
 
 /** One-shot barrier for disposal overlapping a pending PEM read. */
@@ -724,6 +724,27 @@ describe('real Loader composition', () => {
     await loading
     expect(server.port).toBeGreaterThan(0)
     await expect(tlsRequest(server.port, '/', fixture.ca)).rejects.toThrow()
+  })
+
+  it('writes the control origin into the index only for an https occupancy origin', { timeout: 60_000 }, async () => {
+    expect(occupancyIndex('<head></head><body></body>', undefined)).toBe('<head></head><body></body>')
+    expect(occupancyIndex('<head></head><body></body>', 'http://dshk8syw.com')).toBe('<head></head><body></body>')
+    process.env.DSH_OCCUPANCY_ORIGIN = 'https://dshk8syw.com'
+    try {
+      const loaded = await loadComposition()
+      const server = loaded.webServer
+      server.registerFallback((_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/html' })
+        res.end(server.applyIndexTaps('<head></head><body>shell</body>'))
+      })
+      const response = await fetch(`http://127.0.0.1:${String(server.port)}/plugin`)
+      const html = await response.text()
+      expect(html).toContain('<meta name="dsh-control-origin" content="https://dshk8syw.com">')
+      expect(html).toContain('<script src="https://dshk8syw.com/occupancy.js" defer></script>')
+      expect(html).not.toContain('accessKey')
+    } finally {
+      delete process.env.DSH_OCCUPANCY_ORIGIN
+    }
   })
 
   it('fails the fiber when the port is already taken (fail-loud at activation)', { timeout: 60_000 }, async () => {

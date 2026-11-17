@@ -313,6 +313,11 @@
     - id: ui-plugin-manager
       name: '@deepseek-ai/dsh-client-ui-plugin-manager'
 
+    # Aliyun key and GitHub token for the ACK cluster plugin. This row stays
+    # loaded when that optional bundle is off. The slot key is the bundle name.
+    - id: ui-ack-credentials
+      name: '@deepseek-ai/dsh-client-ui-ack-credentials'
+
     # Read-only Plugin list tab in the Settings Plugins section; the built-in
     # bundles the sidebar page leaves out are inspected here.
     - id: ui-settings-plugin-inventory
