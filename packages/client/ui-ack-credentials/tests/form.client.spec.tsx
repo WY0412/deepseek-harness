@@ -75,3 +75,21 @@ it('renders nothing without a control origin', () => {
   const { container } = render(<CredentialForm />)
   expect(container.textContent).toBe('')
 })
+
+it('presents each credential as a named form with an associated status', async () => {
+  origin('https://dshk8syw.com')
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    ready: true,
+    cloudKey: 'saved',
+    git: 'missing',
+  }), { status: 200 })))
+
+  render(<CredentialForm />)
+
+  const cloud = await screen.findByRole('form', { name: '阿里云钥匙' })
+  const git = screen.getByRole('form', { name: 'Git 凭证' })
+  expect(cloud.getAttribute('aria-describedby')).toBe('ack-cloud-state')
+  expect(git.getAttribute('aria-describedby')).toBe('ack-git-state')
+  expect(document.getElementById('ack-cloud-state')?.getAttribute('role')).toBe('status')
+  expect(document.getElementById('ack-git-state')?.getAttribute('role')).toBe('status')
+})

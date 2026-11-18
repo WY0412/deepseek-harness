@@ -11,6 +11,7 @@ import {
   saveMessage,
   type CredentialStatus,
 } from './credentials.ts'
+import css from './CredentialForm.module.css'
 
 interface Copy {
   cloudTitle: string
@@ -141,25 +142,58 @@ export function CredentialForm() {
       ? (status.git === 'saved' ? text.gitSaved : text.gitEmpty)
       : text.unavailable
 
-  return <div>
-    <form autoComplete="off" onSubmit={(event) => {
-      event.preventDefault()
-      void submit('cloud')
-    }}>
-      <h2>{text.cloudTitle}</h2>
-      <p>{cloudNote || cloudState}</p>
-      <label>{text.id}<input ref={idRef} name="accessKeyId" autoComplete="off" /></label>
-      <label>{text.secret}<input ref={secretRef} name="accessKeySecret" type="password" autoComplete="new-password" /></label>
-      <button type="submit" disabled={blocked}>{text.saveCloud}</button>
+  return <div className={css.root}>
+    <form className={css.card} autoComplete="off" aria-labelledby="ack-cloud-title"
+      aria-describedby="ack-cloud-state" onSubmit={(event) => {
+        event.preventDefault()
+        void submit('cloud')
+      }}>
+      <div className={css.header}>
+        <span className={css.icon} aria-hidden="true">云</span>
+        <div className={css.heading}>
+          <h2 id="ack-cloud-title" className={css.title}>{text.cloudTitle}</h2>
+          <p id="ack-cloud-state" className={css.note} role="status" aria-live="polite">
+            <span className={css.statusDot} data-saved={status?.cloudKey === 'saved' || undefined} aria-hidden="true" />
+            {cloudNote || cloudState}
+          </p>
+        </div>
+      </div>
+      <div className={css.cloudFields}>
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{text.id}</span>
+          <input className={css.input} ref={idRef} name="accessKeyId" autoComplete="off" />
+        </label>
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{text.secret}</span>
+          <input className={css.input} ref={secretRef} name="accessKeySecret" type="password" autoComplete="new-password" />
+        </label>
+      </div>
+      <div className={css.actions}>
+        <button className={css.button} type="submit" disabled={blocked}>{text.saveCloud}</button>
+      </div>
     </form>
-    <form autoComplete="off" onSubmit={(event) => {
-      event.preventDefault()
-      void submit('git')
-    }}>
-      <h2>{text.gitTitle}</h2>
-      <p>{gitNote || gitState}</p>
-      <label>{text.token}<input ref={tokenRef} name="token" type="password" autoComplete="new-password" /></label>
-      <button type="submit" disabled={blocked}>{text.saveGit}</button>
+    <form className={css.card} autoComplete="off" aria-labelledby="ack-git-title"
+      aria-describedby="ack-git-state" onSubmit={(event) => {
+        event.preventDefault()
+        void submit('git')
+      }}>
+      <div className={css.header}>
+        <span className={`${css.icon} ${css.gitIcon}`} aria-hidden="true">GH</span>
+        <div className={css.heading}>
+          <h2 id="ack-git-title" className={css.title}>{text.gitTitle}</h2>
+          <p id="ack-git-state" className={css.note} role="status" aria-live="polite">
+            <span className={css.statusDot} data-saved={status?.git === 'saved' || undefined} aria-hidden="true" />
+            {gitNote || gitState}
+          </p>
+        </div>
+      </div>
+      <div className={css.gitFields}>
+        <label className={css.field}>
+          <span className={css.fieldLabel}>{text.token}</span>
+          <input className={css.input} ref={tokenRef} name="token" type="password" autoComplete="new-password" />
+        </label>
+        <button className={css.button} type="submit" disabled={blocked}>{text.saveGit}</button>
+      </div>
     </form>
   </div>
 }
