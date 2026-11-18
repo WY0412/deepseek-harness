@@ -1,5 +1,7 @@
 /** Browser entry for the ACK cluster credential form. */
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { ACK_BUNDLE, readControlOrigin } from './credentials.ts'
 import { CredentialForm } from './CredentialForm.tsx'
 

@@ -20,7 +20,7 @@ function origin(value: string): void {
 
 it('posts the key to the control origin and clears the inputs', async () => {
   origin('https://dshk8syw.com')
-  const calls: Array<{ url: string; init?: RequestInit }> = []
+  const calls: Array<{ url: string; init?: RequestInit | undefined }> = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init })
     if (init?.method === 'POST') {

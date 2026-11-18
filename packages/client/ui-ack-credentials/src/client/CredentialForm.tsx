@@ -99,6 +99,7 @@ export function CredentialForm() {
 
   if (doc === undefined || origin === null) return null
   const page = doc
+  const controlOrigin = origin
   const blocked = busy || status?.ready === false
 
   async function submit(kind: 'cloud' | 'git'): Promise<void> {
@@ -109,7 +110,7 @@ export function CredentialForm() {
       : gitBody(tokenRef.current?.value ?? '')
     const note = kind === 'cloud' ? setCloudNote : setGitNote
     try {
-      const response = await fetch(credentialUrl(origin), {
+      const response = await fetch(credentialUrl(controlOrigin), {
         method: 'POST',
         credentials: 'include',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -118,7 +119,7 @@ export function CredentialForm() {
       const result = parseSave(response.status, await readJson(response))
       note(saveMessage(kind, result, page.documentElement.lang))
       if (result === 'saved') {
-        const next = await loadStatus(origin)
+        const next = await loadStatus(controlOrigin)
         if (next) setStatus(next)
       }
     } catch {

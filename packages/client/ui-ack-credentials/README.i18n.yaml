@@ -14,3 +14,12 @@
 /deepseek-ai-dsh-client-ui-ack-credentials/use-this-package:
   en: 3b5ba009f4588e5a
   zh: af806f1674331c26
+/deepseek-ai-dsh-client-ui-ack-credentials/model-experience:
+  en: 3b19513550df4d8a
+  zh: 97b8ee496b515bfc
+/deepseek-ai-dsh-client-ui-ack-credentials/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: f57cc48a1b5cbfa9
+/deepseek-ai-dsh-client-ui-ack-credentials/known-limitations-and-deferred-work:
+  en: 9e14518baf57f83b
+  zh: 9b78056cc948ce09
