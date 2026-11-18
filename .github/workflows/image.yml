@@ -1,11 +1,15 @@
 # Build this fork's dsh and push a runtime image. The pool image starts FROM
-# this image and adds the supervisor. Push to master, or run the workflow by hand.
+# this image and adds the supervisor. A successful master image dispatches its
+# immutable SHA to WY0412/dsh-pool; manual runs on other refs do not deploy Pool.
 name: image
 
 on:
   push:
     branches: [master]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com
@@ -61,3 +65,51 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:master
+
+      - name: Trigger Pool image release
+        if: github.ref == 'refs/heads/master'
+        env:
+          DISPATCH_TOKEN: ${{ secrets.DSH_POOL_DISPATCH_TOKEN }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -n \
+            --arg harness_sha "$GITHUB_SHA" \
+            --arg source_run_id "$GITHUB_RUN_ID" \
+            '{
+              event_type: "dsh-harness-image-published",
+              client_payload: {
+                harness_sha: $harness_sha,
+                source_repository: "WY0412/deepseek-harness",
+                source_run_id: $source_run_id
+              }
+            }')"
+          response_file="$RUNNER_TEMP/dsh-pool-dispatch-response.json"
+          http_status="$(curl \
+            --silent \
+            --show-error \
+            --retry 2 \
+            --retry-all-errors \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $DISPATCH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            --data "$payload" \
+            https://api.github.com/repos/WY0412/dsh-pool/dispatches)"
+          if [ "$http_status" != 204 ]; then
+            echo "::error::Pool dispatch failed with HTTP $http_status"
+            exit 1
+          fi
+
+      - name: Summarize downstream trigger
+        if: github.ref == 'refs/heads/master'
+        run: |
+          {
+            echo '## Pool release trigger'
+            echo '- Target: `WY0412/dsh-pool`'
+            echo '- Event type: `dsh-harness-image-published`'
+            echo '- Harness SHA: `${{ github.sha }}`'
+            echo '- Source run ID: `${{ github.run_id }}`'
+            echo '- Result: repository dispatch accepted (HTTP 204)'
+          } >> "$GITHUB_STEP_SUMMARY"
