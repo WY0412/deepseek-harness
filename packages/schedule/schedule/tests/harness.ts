@@ -13,6 +13,8 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import ScheduleService, { type Config } from '../src/index.ts'
+import { ScheduleActionRegistry } from '../src/action-registry.ts'
+import MessageDestinationService from '@deepseek-ai/dsh-message-destination'
 
 /**
  * Memory backend whose schedule-unit writes pass through per-primitive hooks.
@@ -68,6 +70,8 @@ export async function harness(options: {
   backend?: StorageBackend
   direct?: true
   config?: Config
+  actionRegistry?: true
+  messageDestinations?: true
 } = {}) {
   const ctx = new Context()
   options.onContext?.(ctx)
@@ -76,6 +80,8 @@ export async function harness(options: {
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(Storage)
+  if (options.actionRegistry) await ctx.plugin(ScheduleActionRegistry)
+  if (options.messageDestinations) await ctx.plugin(MessageDestinationService)
   const pool = options.pool ?? new MemoryMediaPool()
   const backend = options.backend ?? new MemoryStorageBackend(pool)
   ctx.effect(() => ctx.storage.backend.register('fixture', backend))

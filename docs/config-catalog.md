@@ -33,6 +33,44 @@ export interface AcpConfig {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-acp -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-action-cluster-watch -->
+<a id="deepseek-aidsh-action-cluster-watch"></a>
+
+## `@deepseek-ai/dsh-action-cluster-watch`
+
+- `inject`: `scheduleActions`
+- `source`: [`packages/schedule/action-cluster-watch/src/index.ts:11`](../packages/schedule/action-cluster-watch/src/index.ts)
+
+```ts config-catalog
+/** Provider configuration. */
+export interface Config {
+  /** Origin of the lease-authenticated MCP internal HTTP service. */
+  readonly baseUrl: string
+  /** Maximum duration of one cluster snapshot HTTP request. */
+  readonly timeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-action-cluster-watch -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-action-error-budget -->
+<a id="deepseek-aidsh-action-error-budget"></a>
+
+## `@deepseek-ai/dsh-action-error-budget`
+
+- `inject`: `scheduleActions`
+- `source`: [`packages/schedule/action-error-budget/src/index.ts:8`](../packages/schedule/action-error-budget/src/index.ts)
+
+```ts config-catalog
+/** Provider configuration. */
+export interface Config {
+  /** Origin of the lease-authenticated MCP internal HTTP service. */
+  readonly baseUrl: string
+  /** Maximum duration of one error-budget HTTP request. */
+  readonly timeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-action-error-budget -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-default-model -->
 <a id="deepseek-aidsh-agent-default-model"></a>
 
@@ -2227,6 +2265,23 @@ export interface ReconnectConfig {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-mcp-client -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-message-destination-dsh-im -->
+<a id="deepseek-aidsh-message-destination-dsh-im"></a>
+
+## `@deepseek-ai/dsh-message-destination-dsh-im`
+
+- `inject`: `messageDestinations` · `dshIm`
+- `source`: [`packages/interaction/message-destination-dsh-im/src/index.ts:51`](../packages/interaction/message-destination-dsh-im/src/index.ts)
+
+```ts config-catalog
+/** Adapter configuration. */
+export interface Config {
+  /** Maximum time to await an upstream send whose outcome may become unknown. */
+  readonly timeoutMs?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-message-destination-dsh-im -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-message-feedback -->
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -2643,7 +2698,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-schedule`
 
 - `inject`: `agents` · `sessions` · `storageDomain` · `sessionController` · `sessionPersistence`
-- `source`: [`packages/schedule/schedule/src/index.ts:72`](../packages/schedule/schedule/src/index.ts)
+- `source`: [`packages/schedule/schedule/src/index.ts:77`](../packages/schedule/schedule/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for the Host Schedule domain. */
@@ -2658,6 +2713,10 @@ export interface Config {
    * cap and the window wins, and the newest records survive.
    */
   deliveryHistoryRecords?: number
+  /** Retained typed-action execution-history window in days; omission defaults to 30. */
+  executionHistoryDays?: number
+  /** Retained typed-action execution records per task; omission defaults to 100. */
+  executionHistoryRecords?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-schedule -->
@@ -4579,6 +4638,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-llm` | — | [`packages/llm/llm/src/index.ts`](../packages/llm/llm/src/index.ts) |
 | `@deepseek-ai/dsh-lsp` | — | [`packages/lsp/lsp/src/index.ts`](../packages/lsp/lsp/src/index.ts) |
 | `@deepseek-ai/dsh-mcp-resources` | `tools` | [`packages/mcp/mcp-resources/src/index.ts`](../packages/mcp/mcp-resources/src/index.ts) |
+| `@deepseek-ai/dsh-message-destination` | — | [`packages/interaction/message-destination/src/index.ts`](../packages/interaction/message-destination/src/index.ts) |
 | `@deepseek-ai/dsh-otel` | — | [`packages/telemetry/otel/src/index.ts`](../packages/telemetry/otel/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-ssh` | `ssh` | [`packages/ssh/sandbox-ssh/src/index.ts`](../packages/ssh/sandbox-ssh/src/index.ts) |
 | `@deepseek-ai/dsh-session` | — | [`packages/core/session/src/index.ts`](../packages/core/session/src/index.ts) |
@@ -4634,6 +4694,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 <!-- BEGIN GENERATED config-catalog:library -->
 | `package` | `inject` | `source` |
 | --- | --- | --- |
+| `@deepseek-ai/dsh-action-registry` | — | [`packages/schedule/action-registry/src/index.ts`](../packages/schedule/action-registry/src/index.ts) |
 | `@deepseek-ai/dsh-agent-loop-testkit` | — | [`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-anonymous-user-id` | — | [`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts) |
 | `@deepseek-ai/dsh-app-boot` | — | [`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts) |

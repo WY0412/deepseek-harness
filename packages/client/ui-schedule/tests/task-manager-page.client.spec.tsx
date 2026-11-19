@@ -7,7 +7,9 @@ import { bindSnapshotSelector, makeTranslate, RemoteError } from '@deepseek-ai/d
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { ScheduleCatalogEntry, ScheduleDeleteResult, ScheduleId, ScheduleUpdateResult } from '@deepseek-ai/dsh-schedule/client'
+import type {
+  ScheduleCatalogEntry, ScheduleDeleteResult, ScheduleId, ScheduleTaskCatalogEntry, ScheduleUpdateResult,
+} from '@deepseek-ai/dsh-schedule/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { TaskManagerPage, type TaskManagerPageProps } from '../src/client/TaskManagerPage.tsx'
 import { TaskManagerIcon } from '../src/client/TaskManagerIcon.tsx'
@@ -158,13 +160,23 @@ beforeEach(() => {
 // by name, because two names can hold the same offset at one instant.
 const taskZone = (instant: string): string => zoneDifferingFrom(instant)
 
+const taskCatalogEntry = (record: ScheduleCatalogEntry): ScheduleTaskCatalogEntry => ({
+  ...record,
+  paused: false,
+  missedRunPolicy: 'deliver_latest',
+  execution: { kind: 'prompt', prompt: record.prompt },
+  executionHistory: [],
+})
+
 function mount(
   initial: Partial<CatalogSnapshot<ScheduleCatalogEntry>> = {},
   dictionary: typeof en | typeof zh = en,
   overrides: Partial<TaskManagerPageProps> = {},
 ) {
-  let snapshot: CatalogSnapshot<ScheduleCatalogEntry> = {
-    records, status: 'ready', deleting: [], settled: true, readRequest: 0, readSettled: 0, ...initial,
+  const { records: initialRecords = records, ...initialState } = initial
+  let snapshot: CatalogSnapshot<ScheduleTaskCatalogEntry> = {
+    records: initialRecords.map(taskCatalogEntry),
+    status: 'ready', deleting: [], settled: true, readRequest: 0, readSettled: 0, ...initialState,
   }
   const props: TaskManagerPageProps = {
     useCatalog: select => select(snapshot),
@@ -177,6 +189,12 @@ function mount(
     onDelete: vi.fn<TaskManagerPageProps['onDelete']>(async () => 'deleted'),
     onRetry: vi.fn(async () => {}),
     onNewTask: vi.fn(),
+    loadAutomationOptions: vi.fn(async () => ({
+      providers: [{ id: 'cluster-watch', title: 'ACK cluster watch' }, { id: 'error-budget', title: 'DSH error budget' }],
+      destinations: [{ ref: { provider: 'dsh-im', id: 'opaque', label: '值班群', kind: 'group' }, channel: 'wechat' }],
+    })),
+    onCreateAction: vi.fn(async () => {}),
+    onTogglePause: vi.fn(async () => {}),
     onUpdateTiming: vi.fn<TaskManagerPageProps['onUpdateTiming']>(async ({ expected }) => ({
       ok: true, value: { id: expected.id, updated: false, record: expected },
     })),
@@ -196,11 +214,32 @@ function mount(
     props, view,
     updateTiming: vi.mocked(props.onUpdateTiming),
     update(next: Partial<CatalogSnapshot<ScheduleCatalogEntry>>) {
-      snapshot = { ...snapshot, ...next }
+      const { records: nextRecords, ...nextState } = next
+      snapshot = {
+        ...snapshot,
+        ...nextState,
+        ...(nextRecords === undefined ? {} : { records: nextRecords.map(taskCatalogEntry) }),
+      }
       view.rerender(<TaskManagerPage {...props} />)
     },
   }
 }
+
+it('creates typed action presets with an opaque connected destination and online-only copy', async () => {
+  const test = mount()
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  await screen.findByRole('option', { name: '值班群 · wechat' })
+  fireEvent.change(screen.getByRole('textbox', { name: en['action.clusterId'] }), { target: { value: `c${'a'.repeat(32)}` } })
+  fireEvent.change(screen.getByRole('combobox', { name: en['action.destination'] }), { target: { value: 'opaque' } })
+  expect(screen.getByText(en['action.onlineOnly'])).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: en['action.create'] }))
+  await waitFor(() => {
+    expect(test.props.onCreateAction).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'cluster-watch', clusterId: `c${'a'.repeat(32)}`,
+      destination: expect.objectContaining({ provider: 'dsh-im', id: 'opaque' }),
+    }))
+  })
+})
 
 function taskNames(): string[] {
   return within(screen.getByRole('list', { name: en['list.label'] })).queryAllByRole('button')
@@ -532,8 +571,8 @@ function openDelete(dictionary: typeof en | typeof zh = en): HTMLElement {
 }
 
 function remoteCatalog() {
-  const list = vi.fn<() => Promise<RemoteResult<ScheduleCatalogEntry[]>>>()
-    .mockResolvedValue({ ok: true, value: [at] })
+  const list = vi.fn<() => Promise<RemoteResult<ScheduleTaskCatalogEntry[]>>>()
+    .mockResolvedValue({ ok: true, value: [taskCatalogEntry(at)] })
   const remove = vi.fn<(id: ScheduleId) => Promise<RemoteResult<ScheduleDeleteResult>>>()
     .mockResolvedValue({ ok: true, value: { id: at.id, deleted: true } })
   const source = createCatalogSource({
@@ -633,7 +672,8 @@ describe('Task manager catalog', () => {
     const heading = page.querySelector<HTMLElement>(`.${css.pageHeading!}`)!
     expect(heading.querySelector('h1')?.textContent).toBe(en['title'])
     expect(heading.querySelector('p')).toBeNull()
-    expect(heading.querySelector(`.${css.creationActions!}`)?.textContent).toBe(en['new.action'])
+    expect(heading.querySelector(`.${css.creationActions!}`)?.textContent)
+      .toBe(`${en['new.action']}${en['action.clusterWatch']}${en['action.errorBudget']}`)
     // The filter row carries the status group alone: the type chips are gone.
     const filters = page.querySelector<HTMLElement>(`.${css.filters!}`)!
     expect(within(filters).getAllByRole('group')).toHaveLength(1)
@@ -4036,7 +4076,7 @@ describe('Task manager deletion', () => {
     const h = remoteCatalog()
     await screen.findByRole('button', { name: 'Review release' })
     const deletion = Promise.withResolvers<RemoteResult<ScheduleDeleteResult>>()
-    const refresh = Promise.withResolvers<RemoteResult<ScheduleCatalogEntry[]>>()
+    const refresh = Promise.withResolvers<RemoteResult<ScheduleTaskCatalogEntry[]>>()
     h.remove.mockReturnValueOnce(deletion.promise)
     h.list.mockReturnValueOnce(refresh.promise)
     openDelete()

@@ -1,5 +1,6 @@
 /** Host-wide durable reminders and shared human/model management. */
 import { randomUUID } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import z from '@deepseek-ai/schemastery'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
@@ -8,21 +9,26 @@ import { delegationDepthOf } from '@deepseek-ai/dsh-subagent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionActivity } from '@deepseek-ai/dsh-workspace'
 import { ScheduleRuntime } from './runtime.ts'
-import { scheduleDomain } from './storage.ts'
+import type { ScheduleActionRegistry } from './action-registry.ts'
+import type { MessageDestinationService } from '@deepseek-ai/dsh-message-destination'
+import { resolveScheduleTaskCompat, scheduleDomain, type ScheduleTask } from './storage.ts'
 import { deliveryHistoryPage } from './delivery-history.ts'
 import { resolveScheduleUpdate } from './update.ts'
 import {
   foldScheduleEvents, ScheduleInputError, ScheduleLogError, ScheduleId, createAfterScheduleRecord, createAtScheduleRecord,
   createEveryScheduleRecord, createDailyScheduleRecord, createWeeklyScheduleRecord, createCronScheduleRecord,
-  scheduleTitle,
+  isRecurringScheduleRecord, resolveRecurringOccurrence, scheduleTitle,
 } from './domain.ts'
 import type {
-  DeliveryRetentionBounds, ScheduleCatalogEntry, ScheduleCreateRequest, ScheduleDeleteRequest, ScheduleDeleteResult,
+  DeliveryRetentionBounds, ScheduleActionCreateRequest, ScheduleCatalogEntry, ScheduleCreateRequest,
+  ScheduleDeleteRequest, ScheduleDeleteResult,
   ScheduleDeliveryHistoryRequest, ScheduleDeliveryHistoryResult, ScheduleListRequest, ScheduleRecord,
-  ScheduleUpdateRequest, ScheduleUpdateResult, SubagentSessionError,
+  SchedulePauseRequest, SchedulePauseResult, ScheduleTaskCatalogEntry, ScheduleUpdateRequest, ScheduleUpdateResult, SubagentSessionError,
+  ScheduleAutomationOptions,
 } from './types.ts'
 
 export type * from './types.ts'
+export { ScheduleActionRegistry } from './action-registry.ts'
 export { scheduleDomain } from './storage.ts'
 export type { ScheduleTask } from './storage.ts'
 export type { RecurringOccurrence } from './domain.ts'
@@ -80,6 +86,10 @@ export interface Config {
    * cap and the window wins, and the newest records survive.
    */
   deliveryHistoryRecords?: number
+  /** Retained typed-action execution-history window in days; omission defaults to 30. */
+  executionHistoryDays?: number
+  /** Retained typed-action execution records per task; omission defaults to 100. */
+  executionHistoryRecords?: number
 }
 
 /** Retained delivery-history window applied when the deployment states none. */
@@ -87,6 +97,8 @@ const DEFAULT_DELIVERY_HISTORY_DAYS = 30
 
 /** Retained delivery-history record cap applied when the deployment states none. */
 const DEFAULT_DELIVERY_HISTORY_RECORDS = 200
+const DEFAULT_EXECUTION_HISTORY_DAYS = 30
+const DEFAULT_EXECUTION_HISTORY_RECORDS = 100
 
 /**
  * Shared management service; reads, deletion, and timing edits never activate a Session.
@@ -102,6 +114,8 @@ export class ScheduleService extends TypertRemoteService {
   static Config: z<Config> = z.object({
     deliveryHistoryDays: z.number().step(1).min(1).max(3650).default(DEFAULT_DELIVERY_HISTORY_DAYS),
     deliveryHistoryRecords: z.number().step(1).min(1).max(10_000).default(DEFAULT_DELIVERY_HISTORY_RECORDS),
+    executionHistoryDays: z.number().step(1).min(1).max(3650).default(DEFAULT_EXECUTION_HISTORY_DAYS),
+    executionHistoryRecords: z.number().step(1).min(1).max(100).default(DEFAULT_EXECUTION_HISTORY_RECORDS),
   })
 
   /** Resolved retention bounds shared with the runtime that appends acknowledgments. */
@@ -110,6 +124,8 @@ export class ScheduleService extends TypertRemoteService {
   private readonly initialized: PromiseLike<unknown>
   private chain: Promise<unknown> = Promise.resolve()
   private runtime: ScheduleRuntime | undefined
+  private actionRegistry: ScheduleActionRegistry | undefined
+  private destinations: MessageDestinationService | undefined
   private stopping = false
 
   /**
@@ -118,6 +134,21 @@ export class ScheduleService extends TypertRemoteService {
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'schedule')
+    ctx.inject(['scheduleActions'], (actionCtx) => {
+      const registry = actionCtx.scheduleActions
+      this.actionRegistry = registry
+      this.runtime?.requestDrive()
+      actionCtx.effect(() => () => {
+        if (this.actionRegistry === registry) this.actionRegistry = undefined
+      }, 'schedule.actionRegistryBinding()')
+    })
+    ctx.inject(['messageDestinations'], (destinationCtx) => {
+      const service = destinationCtx.messageDestinations
+      this.destinations = service
+      destinationCtx.effect(() => () => {
+        if (this.destinations === service) this.destinations = undefined
+      }, 'schedule.messageDestinationBinding()')
+    })
     this.retention = {
       days: config.deliveryHistoryDays ?? DEFAULT_DELIVERY_HISTORY_DAYS,
       records: config.deliveryHistoryRecords ?? DEFAULT_DELIVERY_HISTORY_RECORDS,
@@ -159,7 +190,13 @@ export class ScheduleService extends TypertRemoteService {
           await tasks.put(task.record.id, task)
           this.emitChanged()
         },
-        this.retention)
+        this.retention,
+        {
+          days: config.executionHistoryDays ?? DEFAULT_EXECUTION_HISTORY_DAYS,
+          records: config.executionHistoryRecords ?? DEFAULT_EXECUTION_HISTORY_RECORDS,
+        },
+        () => this.actionRegistry,
+        () => this.destinations)
       this.runtime.requestDrive()
       return cleanup
     })
@@ -169,7 +206,6 @@ export class ScheduleService extends TypertRemoteService {
       // legacy stream must warn here instead of blocking Session creation.
       let activeLegacy = 0
       try {
-        // oxlint-disable-next-line typescript/no-deprecated -- Explicit warning for legacy Schedule history.
         activeLegacy = foldScheduleEvents(session.ownEvents()).active.length
       } catch (error: unknown) {
         /* v8 ignore next -- foldScheduleEvents normalizes every rejected stream to ScheduleLogError. */
@@ -263,6 +299,68 @@ export class ScheduleService extends TypertRemoteService {
   }
 
   /**
+   * Create one recurring typed action with offline occurrences skipped.
+   * @param sessionId - Original Session binding used for ownership and management.
+   * @param request - Registered action execution and exactly one recurring selector.
+   * @param signal - Optional cancellation checked before persistence begins.
+   * @returns The durably stored task catalog entry.
+   */
+  @Remote('createAction')
+  async createAction(
+    sessionId: SessionId,
+    request: ScheduleActionCreateRequest,
+    signal?: AbortSignal,
+  ): Promise<ScheduleTaskCatalogEntry> {
+    const selectors = Number(request.every_seconds !== undefined) + Number(request.daily !== undefined)
+      + Number(request.weekly !== undefined) + Number(request.cron !== undefined)
+    if (selectors !== 1) {
+      throw new ScheduleInputError('invalid_selector', 'Exactly one recurring action selector is required.')
+    }
+    const registry = this.actionRegistry
+    if (registry === undefined || registry.get(request.execution.provider) === undefined) {
+      throw new ScheduleInputError('invalid_rule', `Action provider ${JSON.stringify(request.execution.provider)} is unavailable.`)
+    }
+    const execution = { ...request.execution, config: registry.validate(request.execution.provider, request.execution.config) }
+    const title = scheduleTitle(request.title)
+    const id = ScheduleId(`schedule-${randomUUID()}`)
+    const now = Date.now()
+    let record: ScheduleRecord
+    if (request.every_seconds !== undefined) {
+      record = createEveryScheduleRecord(id, title, request.every_seconds, now, title)
+    } else if (request.daily !== undefined) {
+      record = createDailyScheduleRecord(id, title, request.daily, now, title)
+    } else if (request.weekly !== undefined) {
+      record = createWeeklyScheduleRecord(id, title, request.weekly, now, title)
+    } else if (request.cron !== undefined) {
+      record = createCronScheduleRecord(id, title, request.cron, now, title)
+    } else {
+      throw new ScheduleInputError('invalid_selector', 'Exactly one recurring action selector is required.')
+    }
+    return this.serialize(async () => {
+      const refusal = this.reminderTargetRefusal(sessionId)
+      if (refusal !== undefined) throw new ScheduleInputError('subagent_session', refusal.message)
+      const task = {
+        sessionId, record, status: 'active' as const, missedRunPolicy: 'skip' as const, paused: false,
+        execution, executionHistory: [],
+        deliveryHistory: { records: [], earlierRecordsUnavailable: false },
+      }
+      signal?.throwIfAborted()
+      await (await this.getDomain()).table('tasks').put(id, task)
+      this.emitChanged()
+      this.runtime?.requestDrive()
+      return this.projectTask(task)
+    })
+  }
+
+  /** List action providers and currently authorized opaque message destinations. */
+  @Remote('automationOptions')
+  async automationOptions(signal?: AbortSignal): Promise<ScheduleAutomationOptions> {
+    const providers = this.actionRegistry?.list() ?? []
+    const destinations = this.destinations === undefined ? [] : await this.destinations.list(signal ?? new AbortController().signal)
+    return { providers, destinations: destinations.map(item => ({ ref: item.ref, channel: item.channel })) }
+  }
+
+  /**
    * Read the selected Session's active tasks without resuming its Agent.
    * @param request - Session whose task list is requested.
    * @returns Persisted reminders in storage order.
@@ -289,6 +387,17 @@ export class ScheduleService extends TypertRemoteService {
         ...task.record, sessionId: task.sessionId, status: task.status,
         ...(task.lastDelivery === undefined ? {} : { lastDelivery: task.lastDelivery }),
       }))
+      .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
+  }
+
+  /**
+   * Read all Host tasks with effective action, policy, pause, and execution-history metadata.
+   * @returns Tasks ordered by scheduledAt ascending, then lexicographically by id.
+   */
+  @Remote('taskCatalog')
+  async taskCatalog(): Promise<ScheduleTaskCatalogEntry[]> {
+    const domain = await this.getDomain()
+    return [...domain.table('tasks').entries()].map(([, task]) => this.projectTask(task))
       .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id))
   }
 
@@ -331,6 +440,7 @@ export class ScheduleService extends TypertRemoteService {
       if (current === undefined || current.sessionId !== request.sessionId) {
         return { id: request.id, deleted: false, code: 'schedule_not_found' }
       }
+      this.runtime?.cancel(request.id)
       await tasks.delete(request.id)
       this.emitChanged()
       this.runtime?.requestDrive()
@@ -374,6 +484,60 @@ export class ScheduleService extends TypertRemoteService {
   }
 
   /**
+   * Freeze one active task after an optimistic record comparison.
+   * @param request - Session binding, task identity, and complete observed record.
+   * @param signal - Cancellation checked before persistence begins.
+   * @returns Durable pause state or the existing lookup/ended/conflict result.
+   */
+  @Remote('pause')
+  async pause(request: SchedulePauseRequest, signal?: AbortSignal): Promise<SchedulePauseResult> {
+    return this.setPaused(request, true, signal)
+  }
+
+  /**
+   * Resume one active task, re-anchoring a missed recurring skip task strictly after resume time.
+   * @param request - Session binding, task identity, and complete observed record.
+   * @param signal - Cancellation checked before persistence begins.
+   * @returns Durable pause state or the existing lookup/ended/conflict result.
+   */
+  @Remote('resume')
+  async resume(request: SchedulePauseRequest, signal?: AbortSignal): Promise<SchedulePauseResult> {
+    return this.setPaused(request, false, signal)
+  }
+
+  private setPaused(
+    request: SchedulePauseRequest,
+    paused: boolean,
+    signal?: AbortSignal,
+  ): Promise<SchedulePauseResult> {
+    return this.serialize<SchedulePauseResult>(async () => {
+      const tasks = (await this.getDomain()).table('tasks')
+      signal?.throwIfAborted()
+      const current = tasks.get(request.id)
+      if (current === undefined || current.sessionId !== request.sessionId) {
+        return { id: request.id, updated: false, code: 'schedule_not_found' }
+      }
+      if (current.status === 'inactive') return { id: request.id, updated: false, code: 'schedule_ended' }
+      if (!isDeepStrictEqual(this.projectTask(current), request.expected)) {
+        return { id: request.id, updated: false, code: 'schedule_conflict' }
+      }
+      if ((current.paused ?? false) === paused) {
+        return { id: request.id, updated: true, paused, record: current.record }
+      }
+      let record = current.record
+      if (!paused && current.missedRunPolicy === 'skip' && isRecurringScheduleRecord(record)
+        && Date.parse(record.scheduledAt) <= Date.now()) {
+        const occurrence = resolveRecurringOccurrence(record, Date.now())
+        record = { ...record, scheduledAt: occurrence.nextScheduledAt ?? occurrence.occurrenceAt }
+      }
+      await tasks.put(request.id, { ...current, record, paused })
+      this.emitChanged()
+      this.runtime?.requestDrive()
+      return { id: request.id, updated: true, paused, record }
+    })
+  }
+
+  /**
    * Dispatch one post-commit `schedule/changed` notification, containing
    * synchronous listener failures: every call site emits only after its durable
    * task write landed, so a throwing listener must not reject the caller or
@@ -387,6 +551,17 @@ export class ScheduleService extends TypertRemoteService {
       // listeners inline and nothing else runs in the try. The event is a
       // notification, not a transaction participant.
       this.ctx.logger.warn(`schedule: schedule/changed listener failed: ${String(error)}`)
+    }
+  }
+
+  private projectTask(task: ScheduleTask): ScheduleTaskCatalogEntry {
+    const compat = resolveScheduleTaskCompat(task)
+    return {
+      ...task.record, sessionId: task.sessionId, status: task.status, paused: compat.paused,
+      missedRunPolicy: compat.missedRunPolicy, execution: compat.execution,
+      executionHistory: task.executionHistory ?? [],
+      ...(task.lastExecution === undefined ? {} : { lastExecution: task.lastExecution }),
+      ...(task.lastDelivery === undefined ? {} : { lastDelivery: task.lastDelivery }),
     }
   }
 

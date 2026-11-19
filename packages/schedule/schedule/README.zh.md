@@ -62,6 +62,8 @@ cron 输入携带 `expression` 和 `time_zone`。表达式是标准五字段 Vix
 
 `ScheduleService` 拥有一个版本 1 的 `schedule` domain、全局唯一的任务 id 和一个宿主定时器。每条任务同时存储会话绑定、记录及 `active` 或 `inactive` 状态；仅活动任务驱动定时器。已存储但缺少状态的记录规范化为 `active`，不会扫描或重建历史会话。管理写入与投递写入共用一个 FIFO。更新在队列内比较完整预期记录并采样 `Date.now()`；一次任务 put 修改规则、名称或指令，不替换绑定或发送历史。创建、删除和更新在排队结束、持久化开始前重新检查传入的取消信号；写入一旦开始，取消不会将其回滚。定时器重新读取实际时间，包括时钟回拨时在会话恢复后重新核对到期成员，并分段处理超过平台定时器上限的延迟。同一会话到期的 Every、Daily、Weekly 和 Cron 任务合并为一条消息；每条任务在投递判断后分别推进。即使批次中另一条任务持久化失败，已成功推进的任务仍参与宿主下一次定时计算。
 
+任务解码器接受可选的 `missedRunPolicy`、`paused`、`execution`、`lastExecution`、`executionHistory` 和执行中的 `actionRun` 字段。缺失值在不重写任务行的情况下分别解析为 `deliver_latest`、`false`，以及从 `record.prompt` 派生的提示词执行。`ScheduleActionRegistry` 拒绝重复 provider id，在执行前验证配置，并传递删除或关机取消信号。`createAction` 只接受周期 action 并写入 `missedRunPolicy=skip`；`taskCatalog` 提供有效策略、暂停状态、execution 和有界历史。启动时会推进错过的 skip 任务而不创建历史，对已持久化的 running action 最多重试一次，并把 delivering action 转为 delivery `unknown` 而不重发。未知 provider 会冻结任务。普通提示词提醒保持原有入队与崩溃语义。支持的发布路径为 old → compat → feature；feature 写入方只能回滚到 compat。
+
 投递通过 `sessionController.resolveAgent` 解析原会话。插件来源的 `followup()` 同步将消息追加到会话收件箱；会话 flush 成功后确认持久投递。随后一次任务行 put 更新 `lastDelivery`，将实际回执与已发送提示文本快照追加到 `deliveryHistory.records`，并保存单次任务的 `inactive` 状态或周期任务的下一目标时间。回执包含发生时点 `scheduledAt`、确认时间 `deliveredAt` 和 `messageId`；它确认收件箱投递，不表示模型执行。flush 或任务 put 失败均不发布新的已保存记录。会话持久化与任务 put 是两次独立的持久写入；会话 flush 后崩溃或任务写入失败可能留下未记入发送记录的已投递消息，并再次投递相同提醒。
 
 版本 1 的可选 `deliveryHistory` 保留在任务行中，其从旧到新排列的 `records` 和 `earlierRecordsUnavailable` 标志与状态及目标时间共同提交。新任务的记录为空，标志为 false。读取没有历史的任务时，仅呈现其已有的 `lastDelivery`（若存在），不含提示文本快照，标志为 true；读取不重写任务，也不从会话日志或当前提示文本重建缺失的投递或提示文本。后续追加保留 true 标志及已有回执。存储历史拒绝重复消息 id，以及与 `lastDelivery` 不一致的最新回执。
@@ -94,11 +96,11 @@ Schedule domain 声明整 unit 布局，因为任务是权威数据。路由到 
 
 #### 模型看到什么
 
-[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-schedule) 包含 `schedule_create`、`schedule_list`、`schedule_delete` 和 `schedule_update` 的描述与 schema；这些工具由 [`@deepseek-ai/dsh-tool-schedule`](../tool-schedule/README.zh.md) 贡献给挂载它的 preset。
+[生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-schedule) 包含 `schedule_create`、`schedule_list`、`schedule_delete`、`schedule_update`、`schedule_pause` 和 `schedule_resume` 的描述与 schema；这些工具由 [`@deepseek-ai/dsh-tool-schedule`](../tool-schedule/README.zh.md) 贡献给挂载它的 preset。
 
 #### Token 影响
 
-四个 schema 在可用期间向请求上下文贡献固定的 token。已存储任务和浏览器目录查询不增加 schema token。
+六个 schema 在可用期间向请求上下文贡献固定的 token。已存储任务和浏览器目录查询不增加 schema token。
 
 #### KV Cache 影响
 

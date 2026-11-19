@@ -24,6 +24,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../interaction/message-destination"
+    },
+    {
       "path": "../../core/session"
     },
     {

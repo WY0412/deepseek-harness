@@ -1,0 +1,24 @@
+{
+  "name": "@deepseek-ai/dsh-message-destination-dsh-im",
+  "description": "DSH-IM adapter for opaque Harness message destinations",
+  "version": "0.2.1-alpha.2",
+  "publishConfig": { "access": "public" },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-message-destination": "workspace:*",
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-message-destination": "workspace:*",
+    "@deepseek-ai/cordis": "workspace:~"
+  }
+}

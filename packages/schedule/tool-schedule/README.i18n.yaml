@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/schedule/tool-schedule/README.md
 /:
-  en: 5bcd39034f505033
-  zh: 9bfd85a1ad52bc67
+  en: 8b604529ef53f157
+  zh: edbc4950157896ea
 /deepseek-ai-dsh-tool-schedule:
   en: eb91320d8594cfca
   zh: 7a900a2029baafa5
 /deepseek-ai-dsh-tool-schedule/summary:
-  en: 3552ccd992a1540e
-  zh: 13241608f0b9fc8a
+  en: 881c1c066c76b501
+  zh: 64b6ca536727db24
 /deepseek-ai-dsh-tool-schedule/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -20,21 +20,21 @@
 /deepseek-ai-dsh-tool-schedule/use-this-package/when-to-choose-it:
   en: a9203babc3d8db01
   zh: 4b26bfe528f39972
-/deepseek-ai-dsh-tool-schedule/use-this-package/the-four-tools:
-  en: f8aae686d0531c29
-  zh: 3cccd1ba81aae48d
+/deepseek-ai-dsh-tool-schedule/use-this-package/the-six-tools:
+  en: 497a8be09693bf33
+  zh: 53b397e80975b713
 /deepseek-ai-dsh-tool-schedule/use-this-package/minimal-configuration:
-  en: eef3a83c0ffb2931
-  zh: 9b527abfde4c3406
+  en: 8e70b8c5e751244b
+  zh: b248e19fb23da263
 /deepseek-ai-dsh-tool-schedule/understand-the-implementation:
-  en: 065702b7a82b8fa1
-  zh: 642037baaa2c0f1d
+  en: c84f906f98ceeff4
+  zh: 0629849dd95a8e1a
 /deepseek-ai-dsh-tool-schedule/understand-the-implementation/source-map:
-  en: 676c4e0595fcc8dd
-  zh: f02ed861f66e7747
+  en: 9cf021aa7b53e68b
+  zh: 3b3f5ed498bbceed
 /deepseek-ai-dsh-tool-schedule/further-exploration:
-  en: 1484566b323c3cff
-  zh: 1b1b9fbf85daf3fa
+  en: 4b878daae385cccf
+  zh: 3ba897e700595e62
 /deepseek-ai-dsh-tool-schedule/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90

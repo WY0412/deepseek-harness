@@ -2501,6 +2501,15 @@ importers:
 
   packages/bundle/web-app:
     dependencies:
+      '@deepseek-ai/dsh-action-cluster-watch':
+        specifier: workspace:*
+        version: link:../../schedule/action-cluster-watch
+      '@deepseek-ai/dsh-action-error-budget':
+        specifier: workspace:*
+        version: link:../../schedule/action-error-budget
+      '@deepseek-ai/dsh-action-registry':
+        specifier: workspace:*
+        version: link:../../schedule/action-registry
       '@deepseek-ai/dsh-agent-instructions':
         specifier: workspace:*
         version: link:../../context/agent-instructions
@@ -2777,6 +2786,12 @@ importers:
       '@deepseek-ai/dsh-message-feedback':
         specifier: workspace:*
         version: link:../../feedback/message-feedback
+      '@deepseek-ai/dsh-message-destination':
+        specifier: workspace:*
+        version: link:../../interaction/message-destination
+      '@deepseek-ai/dsh-message-destination-dsh-im':
+        specifier: workspace:*
+        version: link:../../interaction/message-destination-dsh-im
       '@deepseek-ai/dsh-office-to-pdf':
         specifier: workspace:*
         version: link:../../document/office-to-pdf
@@ -10388,6 +10403,21 @@ importers:
         specifier: workspace:*
         version: link:../../typert/protocol
 
+  packages/interaction/message-destination:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+
+  packages/interaction/message-destination-dsh-im:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-message-destination':
+        specifier: workspace:*
+        version: link:../message-destination
+
   packages/interaction/permission-presets:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -11560,6 +11590,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-message-destination':
+        specifier: workspace:*
+        version: link:../../interaction/message-destination
       '@deepseek-ai/dsh-session':
         specifier: workspace:*
         version: link:../../core/session
@@ -11596,6 +11629,41 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:*
         version: link:../../workspace/workspace
+
+  packages/schedule/action-cluster-watch:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-schedule':
+        specifier: workspace:*
+        version: link:../schedule
+
+  packages/schedule/action-error-budget:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-schedule':
+        specifier: workspace:*
+        version: link:../schedule
+
+  packages/schedule/action-registry:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-schedule':
+        specifier: workspace:*
+        version: link:../schedule
 
   packages/schedule/tool-schedule:
     devDependencies:

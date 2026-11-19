@@ -1,5 +1,5 @@
 ---
-description: "Preset-scoped reminder management tools (schedule_create, schedule_list, schedule_update, schedule_delete) over the Host ctx.schedule service, for deployments choosing which agents may keep durable reminders."
+description: "Preset-scoped reminder management tools over the Host ctx.schedule service, including create, list, update, delete, pause, and resume."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-tool-schedule` to let an agent create, list, edit, and delete durable Host reminders through `schedule_create`, `schedule_list`, `schedule_update`, and `schedule_delete`. The package registers the four tools in the preset or Agent scope that mounts it, so the composition decides which agents receive them; `minimal` keeps none. Each call acts on the calling Agent's Session and only manages stored reminders — the Host `@deepseek-ai/dsh-schedule` service owns storage, scheduling, and delivery. Failures return one structured error code instead of storage details.
+Use `dsh-tool-schedule` to let an agent create, list, edit, delete, pause, and resume durable Host reminders. The package registers six tools in the preset or Agent scope that mounts it, so the composition decides which agents receive them; `minimal` keeps none. Each call acts on the calling Agent's Session and only manages stored reminders — the Host `@deepseek-ai/dsh-schedule` service owns storage, scheduling, and delivery. Failures return one structured error code instead of storage details.
 
 ## Table of Contents
 
@@ -31,12 +31,13 @@ Add the row below to a preset's plugin list when that preset's agents should man
 
 Choose it for any preset whose agents need to schedule future work in their own Session, and load `@deepseek-ai/dsh-schedule` in the same process: this package is only the model-facing consumer of that service. A preset that should stay capability-poor — `minimal` is the shipped example — omits the row, and its agents see no reminder tool at all.
 
-### The four tools
+### The six tools
 
 - `schedule_create(prompt, title, <one selector>)` — Create one reminder. Supply a non-empty prompt, a title of at most 120 characters, and exactly one of `after_seconds`, `at`, `every_seconds`, `daily`, `weekly`, or `cron`. Returns the canonical reminder view.
 - `schedule_list()` — List every active reminder of the calling Session with its id, title, UTC target, state, and delivery mode.
 - `schedule_update(id, <title|prompt|one selector>)` — Replace the name, instruction, or timing in place, or a combination of them. An unknown or ended reminder returns `updated: false` with the reason code; `after_seconds` is create-only.
 - `schedule_delete(id)` — Remove one retained reminder, active or ended. Unknown or already-deleted ids return `deleted: false`.
+- `schedule_pause(id)` / `schedule_resume(id)` — Freeze or rearm one active reminder through the same management FIFO; resume reanchors a missed skip-policy recurrence in the future.
 
 ### Minimal configuration
 
@@ -44,7 +45,7 @@ Choose it for any preset whose agents need to schedule future work in their own 
 - name: '@deepseek-ai/dsh-tool-schedule'
 ```
 
-The package declares no `Config` fields. It injects `ctx.tools` and registers the four tools once the scope resolves the Host `ctx.schedule` service, so a composition that keeps that service off mounts no reminder tool. Each call acts on the Session of the Agent that dispatched it.
+The package declares no `Config` fields. It injects `ctx.tools` and registers the six tools once the scope resolves the Host `ctx.schedule` service, so a composition that keeps that service off mounts no reminder tool. Each call acts on the Session of the Agent that dispatched it.
 
 -----
 
@@ -54,13 +55,13 @@ The package declares no `Config` fields. It injects `ctx.tools` and registers th
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The plugin registers four `defineTool` definitions through the context that loads it, so a preset mount decides visibility and Cordis effect ownership disposes them with the mount. Execution reads `exec.agent` for the Session binding and the injected `ctx.schedule` service for storage; the delegation-depth guard runs before selector and identity checks, all before the service call, and any failure the service raises that is not a `ScheduleInputError` collapses to `internal_error` so storage details never reach the model. Model content is the canonical JSON of the returned value, and the Host service owns persistence, scheduling, Session restoration, and delivery.
+The plugin registers six `defineTool` definitions through the context that loads it, so a preset mount decides visibility and Cordis effect ownership disposes them with the mount. Execution reads `exec.agent` for the Session binding and the injected `ctx.schedule` service for storage; the delegation-depth guard runs before selector and identity checks, all before the service call, and any failure the service raises that is not a `ScheduleInputError` collapses to `internal_error` so storage details never reach the model. Model content is the canonical JSON of the returned value, and the Host service owns persistence, scheduling, Session restoration, and delivery.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: the four registrations, selector validation, and the render/present helpers |
+| [`src/index.ts`](src/index.ts) | Plugin entry: the six registrations, selector validation, and the render/present helpers |
 
 </details>
 
@@ -71,7 +72,7 @@ The plugin registers four `defineTool` definitions through the context that load
 
 - [Schedule service](../schedule/README.md) — the Host task store, runtime, and delivery behavior these tools manage.
 - [Schedule group map](../README.md) — the sibling packages in this group.
-- [Generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-schedule) — the exact four schemas the model receives.
+- [Generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-schedule) — the exact six schemas the model receives.
 - [Schedule subsystem](../../../docs/subsystems/schedule.md) — the `ctx.schedule` Cordis surface and stored types.
 - [Schedule user guide](../../../docs/user/guide/schedule.md) — the user-facing reminder workflow.
 

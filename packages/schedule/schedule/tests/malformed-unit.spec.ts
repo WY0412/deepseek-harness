@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
-import { scheduleDomain } from '../src/storage.ts'
+import { scheduleDomain, scheduleTaskSchema } from '../src/storage.ts'
 import { ScheduleId, createAtScheduleRecord } from '../src/domain.ts'
 
 const roots: string[] = []
@@ -47,4 +47,18 @@ it('refuses an array-shaped tables map instead of opening an empty task catalog'
   await expect(facility.open(scheduleDomain)).rejects.toMatchObject({ code: 'malformed-medium' })
   expect(await readFile(path, 'utf8')).toBe(text)
   await backend.close()
+})
+
+it('rejects a future execution history above the durable 100-record cap', () => {
+  const record = createAtScheduleRecord(
+    ScheduleId('history-cap'), 'Keep me', '2099-01-01T00:00:00.000Z', 0, 'Keep me',
+  )
+  const summary = {
+    occurrenceAt: '2026-09-16T00:00:00.000Z', startedAt: '2026-09-16T00:00:01.000Z',
+    finishedAt: '2026-09-16T00:00:02.000Z', outcome: 'succeeded', code: 'unchanged',
+    summary: 'No cluster changes', delivery: 'not_requested',
+  }
+  expect(scheduleTaskSchema.safeParse({
+    sessionId: 'session-1', record, executionHistory: Array.from({ length: 101 }, () => summary),
+  }).success).toBe(false)
 })

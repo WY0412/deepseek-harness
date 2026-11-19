@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/schedule/action-error-budget/README.md
+/:
+  en: 318190bd40f467cb
+  zh: f253d0813d7321e2
+/deepseek-ai-dsh-action-error-budget:
+  en: c146d8dbbdcf8258
+  zh: e94000f5750e9633
+/deepseek-ai-dsh-action-error-budget/summary:
+  en: ccc0aace434e83ad
+  zh: 90b6c31717db74bb
+/deepseek-ai-dsh-action-error-budget/use-this-package:
+  en: a2e2f5a328ca6256
+  zh: 06c87b1de15e4862
+/deepseek-ai-dsh-action-error-budget/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-action-error-budget/model-experience/host-error-budget-action:
+  en: a8c809ce83b73c75
+  zh: adce61176923634c
+/deepseek-ai-dsh-action-error-budget/model-experience/host-error-budget-action/what-the-model-sees:
+  en: 1717c1278c54150e
+  zh: fcf24d9f2cd8bc7a
+/deepseek-ai-dsh-action-error-budget/model-experience/host-error-budget-action/token-effect:
+  en: fca04eb996f3dff4
+  zh: 4ff56af67a6b5808
+/deepseek-ai-dsh-action-error-budget/model-experience/host-error-budget-action/kv-cache-effect:
+  en: 2475828df5cb1f34
+  zh: 001ae9fd4bb3b45d
+/deepseek-ai-dsh-action-error-budget/known-limitations-and-deferred-work:
+  en: 658441be99cc20e1
+  zh: dcfc880ddb24b3f9

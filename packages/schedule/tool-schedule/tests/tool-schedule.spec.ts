@@ -36,9 +36,9 @@ async function executeBody(test: Awaited<ReturnType<typeof setup>>, name: string
 }
 
 describe('Schedule model tools', () => {
-  it('registers the four tools only in the mounting Agent scope', async () => {
+  it('registers the six tools only in the mounting Agent scope', async () => {
     const test = await setup()
-    for (const name of ['schedule_create', 'schedule_list', 'schedule_delete', 'schedule_update']) {
+    for (const name of ['schedule_create', 'schedule_list', 'schedule_delete', 'schedule_update', 'schedule_pause', 'schedule_resume']) {
       expect(test.ctx.tools.get(name, test.agent)).toBeDefined()
       expect(test.ctx.tools.get(name)).toBeUndefined()
       expect(test.ctx.tools.get(name, agentFor(test.ctx, `unrelated-${name}`))).toBeUndefined()
@@ -53,6 +53,8 @@ describe('Schedule model tools', () => {
       ['schedule_list', {}],
       ['schedule_delete', { id: 'task-1' }],
       ['schedule_update', { id: 'task-1', title: 'Check' }],
+      ['schedule_pause', { id: 'task-1' }],
+      ['schedule_resume', { id: 'task-1' }],
     ] as const
     for (const [name, args] of cases) {
       const result = await test.ctx.tools.execute({
@@ -73,6 +75,8 @@ describe('Schedule model tools', () => {
       ['schedule_list', {}],
       ['schedule_delete', { id: 'task-1' }],
       ['schedule_update', { id: 'task-1', title: 'Check' }],
+      ['schedule_pause', { id: 'task-1' }],
+      ['schedule_resume', { id: 'task-1' }],
     ] as const
     for (const [name, args] of cases) {
       const result = await test.ctx.tools.execute({
@@ -81,6 +85,21 @@ describe('Schedule model tools', () => {
       expect(result.isError).toBe(false)
       expect(result.value).toEqual({ code: 'subagent_session', message: 'A delegated subagent cannot use reminders.' })
     }
+  })
+
+  it('pauses and resumes one owned reminder without activating its Session', async () => {
+    const test = await setup()
+    const created = await execute(test, 'schedule_create', {
+      prompt: 'Manage me', title: 'Manage me', every_seconds: 300,
+    })
+    const id = (created.value as { id: string }).id
+    expect((await execute(test, 'schedule_pause', { id })).value)
+      .toEqual({ id, updated: true, paused: true })
+    expect((await test.service.taskCatalog())[0]).toMatchObject({ id, paused: true })
+    expect((await execute(test, 'schedule_resume', { id })).value)
+      .toEqual({ id, updated: true, paused: false })
+    expect((await test.service.taskCatalog())[0]).toMatchObject({ id, paused: false })
+    expect(test.resolve).not.toHaveBeenCalled()
   })
 
   it('creates and lists a lossless daily JSON rule rather than a one-shot', async () => {

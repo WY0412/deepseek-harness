@@ -1,5 +1,5 @@
 ---
-description: "预设作用域的提醒管理工具（schedule_create、schedule_list、schedule_update、schedule_delete），基于宿主 ctx.schedule 服务，供选择哪些 agent 可以维护持久提醒的部署使用。"
+description: "基于宿主 ctx.schedule 服务的预设作用域提醒管理工具，包括创建、列出、更新、删除、暂停与恢复。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用 `dsh-tool-schedule`，可通过 `schedule_create`、`schedule_list`、`schedule_update` 与 `schedule_delete` 让 agent（智能体）创建、列出、编辑和删除宿主持久提醒。本包把四个工具注册进挂载它的 preset 或 Agent 作用域，因此由组合决定哪些 agent 获得这些工具；`minimal` 不获得。每次调用都作用于调用方 Agent 的 Session，并且只管理已存储的提醒——存储、调度与投递由宿主 `@deepseek-ai/dsh-schedule` 服务负责。失败时返回一个结构化错误码，而不是存储细节。
+使用 `dsh-tool-schedule`，可让 agent（智能体）创建、列出、编辑、删除、暂停和恢复宿主持久提醒。本包把六个工具注册进挂载它的 preset 或 Agent 作用域，因此由组合决定哪些 agent 获得这些工具；`minimal` 不获得。每次调用都作用于调用方 Agent 的 Session，并且只管理已存储的提醒——存储、调度与投递由宿主 `@deepseek-ai/dsh-schedule` 服务负责。失败时返回一个结构化错误码，而不是存储细节。
 
 ## 目录
 
@@ -31,12 +31,13 @@ kind: "package-reference"
 
 当 preset 的 agent 需要在自己的 Session 中安排未来工作时选用它，并在同一进程内加载 `@deepseek-ai/dsh-schedule`：本包只是该服务面向模型的消费方。需要保持能力精简的 preset——随产品发布的例子是 `minimal`——会省略该行，其 agent 完全看不到提醒工具。
 
-### 四个工具
+### 六个工具
 
 - `schedule_create(prompt, title, <一个选择器>)` —— 创建一条提醒。需提供非空提示文本、不超过 120 个字符的标题，以及 `after_seconds`、`at`、`every_seconds`、`daily`、`weekly`、`cron` 中的恰好一个。返回规范提醒视图。
 - `schedule_list()` —— 列出调用方 Session 的全部活动提醒及其 id、标题、UTC 目标、状态与投递模式。
 - `schedule_update(id, <title|prompt|一个选择器>)` —— 原地替换名称、指令或时间，或它们的组合。未知或已结束的提醒返回 `updated: false` 及原因码；`after_seconds` 仅限创建时使用。
 - `schedule_delete(id)` —— 删除一条保留的提醒，无论活动还是已结束。未知或已删除的 id 返回 `deleted: false`。
+- `schedule_pause(id)` / `schedule_resume(id)` —— 通过同一管理 FIFO 冻结或重新启用活跃提醒；恢复采用 skip 策略且已错过的周期任务时，会把目标重新锚定到未来。
 
 ### 最小配置
 
@@ -44,7 +45,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-tool-schedule'
 ```
 
-本包不声明任何 `Config` 字段。它注入 `ctx.tools`，并在作用域解析到宿主 `ctx.schedule` 服务后注册这四个工具，因此保持该服务关闭的组合不会挂载任何提醒工具。每次调用都作用于派发该调用的 Agent 的 Session。
+本包不声明任何 `Config` 字段。它注入 `ctx.tools`，并在作用域解析到宿主 `ctx.schedule` 服务后注册这六个工具，因此保持该服务关闭的组合不会挂载任何提醒工具。每次调用都作用于派发该调用的 Agent 的 Session。
 
 -----
 
@@ -54,13 +55,13 @@ kind: "package-reference"
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-插件通过加载它的上下文注册四个 `defineTool` 定义，因此由 preset 挂载决定可见性，并由 Cordis effect 的所有权随挂载一并释放。执行时读取 `exec.agent` 作为 Session 绑定，并读取注入的 `ctx.schedule` 服务进行存储；委派深度守卫先于选择器与身份校验运行，二者均在服务调用之前完成，服务抛出的任何非 `ScheduleInputError` 失败都收敛为 `internal_error`，因此存储细节不会到达模型。模型内容为返回值的规范 JSON，而持久化、调度、Session 恢复与投递都由宿主服务负责。
+插件通过加载它的上下文注册六个 `defineTool` 定义，因此由 preset 挂载决定可见性，并由 Cordis effect 的所有权随挂载一并释放。执行时读取 `exec.agent` 作为 Session 绑定，并读取注入的 `ctx.schedule` 服务进行存储；委派深度守卫先于选择器与身份校验运行，二者均在服务调用之前完成，服务抛出的任何非 `ScheduleInputError` 失败都收敛为 `internal_error`，因此存储细节不会到达模型。模型内容为返回值的规范 JSON，而持久化、调度、Session 恢复与投递都由宿主服务负责。
 
 ### 源码映射
 
 | 文件 | 作用 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 插件入口：四个注册、选择器校验，以及 render/present 辅助函数 |
+| [`src/index.ts`](src/index.ts) | 插件入口：六个注册、选择器校验，以及 render/present 辅助函数 |
 
 </details>
 
@@ -71,7 +72,7 @@ kind: "package-reference"
 
 - [Schedule 服务](../schedule/README.zh.md) —— 这些工具所管理的宿主任务存储、运行时与投递行为。
 - [Schedule 分组映射](../README.zh.md) —— 本组内的同级包。
-- [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-schedule) —— 模型接收的确切四个 schema。
+- [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-schedule) —— 模型接收的确切六个 schema。
 - [Schedule 子系统](../../../docs/subsystems/schedule.zh.md) —— `ctx.schedule` 的 Cordis 接线区域与存储类型。
 - [Schedule 用户指南](../../../docs/user/guide/schedule.zh.md) —— 面向用户的提醒工作流。
 

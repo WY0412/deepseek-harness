@@ -15,7 +15,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { ScheduleCatalogEntry, ScheduleId, ScheduleUpdateResult } from '@deepseek-ai/dsh-schedule/client'
+import type { ScheduleCatalogEntry, ScheduleId, ScheduleTaskCatalogEntry, ScheduleUpdateResult } from '@deepseek-ai/dsh-schedule/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { TaskManagerPage, type TaskManagerPageProps } from '../src/client/TaskManagerPage.tsx'
 import { mergeRuleDraft } from '../src/client/TaskDetail.tsx'
@@ -107,8 +107,15 @@ function mount(
   records: readonly ScheduleCatalogEntry[],
   status: 'loading' | 'ready' | 'error' = 'ready',
 ) {
-  let snapshot: CatalogSnapshot<ScheduleCatalogEntry> = {
-    records, status, deleting: [], settled: status === 'ready', readRequest: 0, readSettled: 0,
+  let snapshot: CatalogSnapshot<ScheduleTaskCatalogEntry> = {
+    records: records.map(record => ({
+      ...record,
+      paused: false,
+      missedRunPolicy: 'deliver_latest',
+      execution: { kind: 'prompt', prompt: record.prompt },
+      executionHistory: [],
+    })),
+    status, deleting: [], settled: status === 'ready', readRequest: 0, readSettled: 0,
   }
   const props: TaskManagerPageProps = {
     useCatalog: select => select(snapshot),
@@ -121,6 +128,9 @@ function mount(
     onDelete: vi.fn<TaskManagerPageProps['onDelete']>(async () => 'deleted'),
     onRetry: vi.fn(async () => {}),
     onNewTask: vi.fn(),
+    loadAutomationOptions: vi.fn(async () => ({ providers: [], destinations: [] })),
+    onCreateAction: vi.fn(async () => {}),
+    onTogglePause: vi.fn(async () => {}),
     onUpdateTiming: vi.fn<TaskManagerPageProps['onUpdateTiming']>(async ({ expected }) => ({
       ok: true, value: { id: expected.id, updated: false, record: expected },
     })),
@@ -138,7 +148,16 @@ function mount(
     updateTiming: vi.mocked(props.onUpdateTiming),
     /** Publish an authoritative catalog snapshot, as a Host refresh does. */
     update(next: readonly ScheduleCatalogEntry[]) {
-      snapshot = { ...snapshot, records: next }
+      snapshot = {
+        ...snapshot,
+        records: next.map(record => ({
+          ...record,
+          paused: false,
+          missedRunPolicy: 'deliver_latest',
+          execution: { kind: 'prompt', prompt: record.prompt },
+          executionHistory: [],
+        })),
+      }
       view.rerender(<TaskManagerPage {...props} />)
     },
     /** Publish one catalog query state, as a refresh or a failure does. */

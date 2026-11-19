@@ -4,7 +4,9 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { decodeScheduleRecord } from './domain.ts'
-import type { ScheduleId, ScheduleRecord } from './types.ts'
+import type {
+  ScheduleActionRun, ScheduleExecution, ScheduleExecutionSummary, ScheduleId, ScheduleJsonValue, ScheduleRecord,
+} from './types.ts'
 
 const recordSchema = z.unknown().transform((value, context): ScheduleRecord => {
   try {
@@ -33,11 +35,56 @@ const deliveryHistorySchema = z.object({
   message: 'Delivery history message identities must be unique within a task',
 })
 
+const nonEmptyTrimmedString = z.string().min(1).refine(value => value.trim() === value)
+const jsonValueSchema: z.ZodType<ScheduleJsonValue> = z.json()
+const destinationRefSchema = z.object({
+  provider: nonEmptyTrimmedString,
+  id: nonEmptyTrimmedString,
+  label: nonEmptyTrimmedString,
+  kind: nonEmptyTrimmedString,
+}).strict()
+const executionSchema: z.ZodType<ScheduleExecution> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('prompt'), prompt: z.string().min(1) }).strict(),
+  z.object({
+    kind: z.literal('action'),
+    provider: nonEmptyTrimmedString,
+    config: jsonValueSchema,
+    destination: destinationRefSchema,
+  }).strict(),
+])
+const executionSummarySchema: z.ZodType<ScheduleExecutionSummary> = z.object({
+  occurrenceAt: instantSchema,
+  startedAt: instantSchema,
+  finishedAt: instantSchema,
+  outcome: z.enum(['succeeded', 'failed']),
+  code: nonEmptyTrimmedString,
+  summary: z.string().max(500),
+  delivery: z.enum(['not_requested', 'sent', 'failed', 'unknown']),
+  destinationLabel: z.string().min(1).max(500).optional(),
+}).strict()
+const actionRunSchema: z.ZodType<ScheduleActionRun> = z.discriminatedUnion('phase', [
+  z.object({
+    phase: z.literal('running'), occurrenceAt: instantSchema, startedAt: instantSchema,
+    attempts: z.number().int().min(1).max(2),
+  }).strict(),
+  z.object({
+    phase: z.literal('delivering'), occurrenceAt: instantSchema, startedAt: instantSchema,
+    finishedAt: instantSchema, outcome: z.enum(['succeeded', 'failed']), code: nonEmptyTrimmedString,
+    summary: z.string().max(500), destinationLabel: z.string().min(1).max(500).optional(),
+  }).strict(),
+])
+
 /** Stored task binds one schedule to its original Session; absent status decodes as active. */
 export const scheduleTaskSchema = z.object({
   sessionId: z.string().min(1).transform(SessionId),
   record: recordSchema,
   status: z.enum(['active', 'inactive']).default('active'),
+  missedRunPolicy: z.enum(['deliver_latest', 'skip']).optional(),
+  paused: z.boolean().optional(),
+  execution: executionSchema.optional(),
+  lastExecution: executionSummarySchema.optional(),
+  executionHistory: z.array(executionSummarySchema).max(100).optional(),
+  actionRun: actionRunSchema.optional(),
   lastDelivery: deliveryReceiptSchema.optional(),
   deliveryHistory: deliveryHistorySchema.optional(),
 }).strict().refine((task) => {
@@ -50,8 +97,28 @@ export const scheduleTaskSchema = z.object({
     && latest.messageId === task.lastDelivery.messageId
 }, { message: 'Last delivery must match the latest saved delivery receipt' })
 
-/** Persistent task value; absent history retains only its legacy last receipt without a read-time rewrite. */
+/** Persistent task value; compat fields remain absent until a feature writer supplies them. */
 export type ScheduleTask = z.infer<typeof scheduleTaskSchema>
+
+/** Compat defaults consumed without materializing them into an older task row. */
+export interface ScheduleTaskCompat {
+  readonly missedRunPolicy: 'deliver_latest' | 'skip'
+  readonly paused: boolean
+  readonly execution: ScheduleExecution
+}
+
+/**
+ * Resolve optional future fields for runtime decisions without rewriting the task.
+ * @param task - Decoded persistent task, possibly written before compat fields existed.
+ * @returns Effective policy, pause state, and execution.
+ */
+export function resolveScheduleTaskCompat(task: ScheduleTask): ScheduleTaskCompat {
+  return {
+    missedRunPolicy: task.missedRunPolicy ?? 'deliver_latest',
+    paused: task.paused ?? false,
+    execution: task.execution ?? { kind: 'prompt', prompt: task.record.prompt },
+  }
+}
 
 /** Authoritative Schedule storage; malformed tasks reject opening the domain. */
 export const scheduleDomain = defineDomain({

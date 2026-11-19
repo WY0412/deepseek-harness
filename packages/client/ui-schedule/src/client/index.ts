@@ -41,7 +41,7 @@ import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ScheduleCatalogEntry, ScheduleDeliveryHistoryRequest, ScheduleId, ScheduleUpdateRequest } from '@deepseek-ai/dsh-schedule/client'
+import type { ScheduleDeliveryHistoryRequest, ScheduleId, ScheduleTaskCatalogEntry, ScheduleUpdateRequest } from '@deepseek-ai/dsh-schedule/client'
 import { createCatalogSource, type CatalogDeleteOutcome, type CatalogInjected } from './catalog-source.ts'
 import { createDeleteToastSource, ScheduleDeleteToast } from './DeleteToast.tsx'
 import { SCHEDULE_TASK_ID, SCHEDULE_TASK_KIND, scheduleTaskDefinition } from './definition.ts'
@@ -89,8 +89,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-schedule: dictionaries')
   ctx.effect(() => ctx.locale.register(MANAGER_NS, { zh: managerZh, en: managerEn }), 'ui-schedule: manager dictionaries')
   const t = ctx.locale.bind(MANAGER_NS)
-  const manager: CatalogInjected<ScheduleCatalogEntry> = createCatalogSource<ScheduleCatalogEntry>({
-    list: () => ctx.remote.schedule.catalog(),
+  const manager: CatalogInjected<ScheduleTaskCatalogEntry> = createCatalogSource<ScheduleTaskCatalogEntry>({
+    list: () => ctx.remote.schedule.taskCatalog(),
     remove: async (id) => {
       const record = manager.hooks.catalog.getSnapshot().records.find(item => item.id === id)
       if (record === undefined) return { ok: true, value: { id, deleted: false, code: 'schedule_not_found' } }
@@ -171,8 +171,40 @@ export function apply(ctx: ClientContext): void {
     locale: MANAGER_NS,
     inject: (): TaskManagerInjected => ({
       ...detail,
+      hooks: manager.hooks,
       // The page has no creation form: a new reminder starts in a Session.
       onNewTask: () => { ctx.uiWorkspace.startSession() },
+      loadAutomationOptions: async () => {
+        const result = await ctx.remote.schedule.automationOptions()
+        if (!result.ok) throw result.error
+        return result.value
+      },
+      onCreateAction: async (input) => {
+        const sessionId = ctx.sessions.list.getSnapshot().ids.at(-1)
+        if (sessionId === undefined) throw new Error('An existing Session is required to own an automation task.')
+        let actionConfig = {}
+        if (input.provider === 'cluster-watch') {
+          if (input.clusterId === undefined) throw new Error('A cluster id is required for cluster-watch automation.')
+          actionConfig = { cluster_id: input.clusterId }
+        }
+        const result = await ctx.remote.schedule.createAction(sessionId, {
+          title: input.provider === 'cluster-watch' ? 'ACK 集群定时快照' : 'DSH 错误预算',
+          execution: {
+            kind: 'action', provider: input.provider,
+            config: actionConfig,
+            destination: input.destination,
+          },
+          daily: { time: input.time, time_zone: input.timeZone },
+        })
+        if (!result.ok) throw result.error
+      },
+      onTogglePause: async (task) => {
+        const result = task.paused
+          ? await ctx.remote.schedule.resume({ sessionId: task.sessionId, id: task.id, expected: task })
+          : await ctx.remote.schedule.pause({ sessionId: task.sessionId, id: task.id, expected: task })
+        if (!result.ok) throw result.error
+        await manager.onRetry(manager.hooks.catalog.getSnapshot().readRequest)
+      },
     }),
   }, TaskManagerPage))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({

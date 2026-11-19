@@ -351,6 +351,9 @@
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],
+      "@deepseek-ai/dsh-action-cluster-watch": ["./packages/schedule/action-cluster-watch/src"],
+      "@deepseek-ai/dsh-action-error-budget": ["./packages/schedule/action-error-budget/src"],
+      "@deepseek-ai/dsh-action-registry": ["./packages/schedule/action-registry/src"],
       "@deepseek-ai/dsh-agent": ["./packages/core/agent/src"],
       "@deepseek-ai/dsh-agent-default-model": ["./packages/core/agent-default-model/src"],
       "@deepseek-ai/dsh-agent-instructions": ["./packages/context/agent-instructions/src"],
@@ -416,6 +419,8 @@
       "@deepseek-ai/dsh-lsp-stdio": ["./packages/lsp/lsp-stdio/src"],
       "@deepseek-ai/dsh-mcp-client": ["./packages/mcp/mcp-client/src"],
       "@deepseek-ai/dsh-mcp-resources": ["./packages/mcp/mcp-resources/src"],
+      "@deepseek-ai/dsh-message-destination": ["./packages/interaction/message-destination/src"],
+      "@deepseek-ai/dsh-message-destination-dsh-im": ["./packages/interaction/message-destination-dsh-im/src"],
       "@deepseek-ai/dsh-message-feedback": ["./packages/feedback/message-feedback/src"],
       "@deepseek-ai/dsh-native-command": ["./packages/util/native-command/src"],
       "@deepseek-ai/dsh-office-to-pdf": ["./packages/document/office-to-pdf/src"],

@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/interaction/message-destination/README.md
+/:
+  en: bcfc8a89a929b877
+  zh: 8f3b7b66f89e384e
+/deepseek-ai-dsh-message-destination:
+  en: 9131f5c259971490
+  zh: 517818b3953117eb
+/deepseek-ai-dsh-message-destination/summary:
+  en: 3cce6169ba1600a4
+  zh: bbf23b47bbc32857
+/deepseek-ai-dsh-message-destination/table-of-contents:
+  en: af856ba79fe31b8e
+  zh: 15b7d1a5d1856de2
+/deepseek-ai-dsh-message-destination/use-this-package:
+  en: bbff250eba0f1b89
+  zh: b20a47f82d8ab6e0
+/deepseek-ai-dsh-message-destination/use-this-package/contract:
+  en: 6354ed09dfdc0a95
+  zh: 2044d69104bc0d04
+/deepseek-ai-dsh-message-destination/use-this-package/exports-for-composition:
+  en: 3e9ada1a36e18393
+  zh: 580614d398c8f056
+/deepseek-ai-dsh-message-destination/understand-the-implementation:
+  en: 19b664afcf75e1ff
+  zh: 44fe81ddce6106b6
+/deepseek-ai-dsh-message-destination/further-exploration:
+  en: 0aa92724b943f5cd
+  zh: 7aa8ea6bf2645643
+/deepseek-ai-dsh-message-destination/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-message-destination/model-experience/host-destination-capability:
+  en: d1e7ece76fb30d57
+  zh: 2bc4a328c18246bc
+/deepseek-ai-dsh-message-destination/model-experience/host-destination-capability/what-the-model-sees:
+  en: 20077469322ad416
+  zh: 90c5b4fcd18fef73
+/deepseek-ai-dsh-message-destination/model-experience/host-destination-capability/token-effect:
+  en: 539ce89d1d9eed2d
+  zh: bfad57f771b210e4
+/deepseek-ai-dsh-message-destination/model-experience/host-destination-capability/kv-cache-effect:
+  en: debefa9872b2f574
+  zh: 6b84b1d44798dccc
+/deepseek-ai-dsh-message-destination/known-limitations-and-deferred-work:
+  en: 35d8c69f07f57e59
+  zh: 6b83f77dc209e8ae
+/deepseek-ai-dsh-message-destination/known-limitations-and-deferred-work/dev-note:
+  en: 5b8fcaead489e694
+  zh: 3546bbbde87c45af

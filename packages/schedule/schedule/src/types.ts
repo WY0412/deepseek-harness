@@ -6,6 +6,7 @@
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { z } from 'zod'
 import type {} from '@deepseek-ai/dsh-session/types'
 // Type-only: the Workspace registry's archive-admission family map this plugin merges `schedule` into.
 import type {} from '@deepseek-ai/dsh-workspace/types'
@@ -193,6 +194,119 @@ export type RecurringScheduleRecord = EveryScheduleRecord | DailyScheduleRecord 
 /** Reminder rule and target, stored with its original Session binding. */
 export type ScheduleRecord = OneShotScheduleRecord | RecurringScheduleRecord
 
+/** Lossless JSON data accepted as an action provider's durable configuration. */
+export type ScheduleJsonValue = null | boolean | number | string | ScheduleJsonValue[] | {
+  [key: string]: ScheduleJsonValue
+}
+
+/** Provider-owned message destination reference without channel-native identifiers. */
+export interface ScheduleDestinationRef {
+  /** Message destination provider identity. */
+  readonly provider: string
+  /** Provider-owned opaque stable reference. */
+  readonly id: string
+  /** Saved display summary; never used for authorization. */
+  readonly label: string
+  /** Provider-owned destination category. */
+  readonly kind: string
+}
+
+/** Existing reminder delivery normalized into the future execution vocabulary. */
+export interface PromptScheduleExecution {
+  /** Prompt delivery discriminator. */
+  readonly kind: 'prompt'
+  /** Reminder content delivered to the owning Session. */
+  readonly prompt: string
+}
+
+/** Future provider action retained by the compat reader but not executed by it. */
+export interface ActionScheduleExecution {
+  /** Provider action discriminator. */
+  readonly kind: 'action'
+  /** Registered action provider identity. */
+  readonly provider: string
+  /** Provider-specific lossless JSON configuration. */
+  readonly config: ScheduleJsonValue
+  /** Opaque destination selected when the task was saved. */
+  readonly destination: ScheduleDestinationRef
+}
+
+/** Durable execution selected for one Schedule task. */
+export type ScheduleExecution = PromptScheduleExecution | ActionScheduleExecution
+
+/** Offline occurrence behavior selected for one Schedule task. */
+export type MissedRunPolicy = 'deliver_latest' | 'skip'
+
+/** Durable result retained for a future action occurrence. */
+export interface ScheduleExecutionSummary {
+  readonly occurrenceAt: string
+  readonly startedAt: string
+  readonly finishedAt: string
+  readonly outcome: 'succeeded' | 'failed'
+  readonly code: string
+  readonly summary: string
+  readonly delivery: 'not_requested' | 'sent' | 'failed' | 'unknown'
+  readonly destinationLabel?: string | undefined
+}
+
+/** Persisted in-flight phase for one typed action occurrence. */
+export type ScheduleActionRun =
+  | {
+    readonly phase: 'running'
+    readonly occurrenceAt: string
+    readonly startedAt: string
+    readonly attempts: number
+  }
+  | {
+    readonly phase: 'delivering'
+    readonly occurrenceAt: string
+    readonly startedAt: string
+    readonly finishedAt: string
+    readonly outcome: 'succeeded' | 'failed'
+    readonly code: string
+    readonly summary: string
+    readonly destinationLabel?: string | undefined
+  }
+
+/** Input supplied to one registered typed action provider. */
+export interface ScheduleActionRequest {
+  /** Durable task identity owning the occurrence. */
+  readonly taskId: ScheduleId
+  /** Canonical occurrence selected by Schedule. */
+  readonly occurrenceAt: string
+  /** Provider configuration validated immediately before execution. */
+  readonly config: ScheduleJsonValue
+  /** Cancellation requested by deletion or Host shutdown. */
+  readonly signal: AbortSignal
+}
+
+/** Deterministic business outcome returned by one action provider. */
+export interface ScheduleActionResult {
+  readonly outcome: 'succeeded' | 'failed'
+  readonly code: string
+  readonly summary: string
+  readonly notify: boolean
+  readonly message?: string | undefined
+}
+
+/** One process-local typed action contribution. */
+export interface ScheduleActionProvider {
+  /** Stable provider identity persisted by action tasks. */
+  readonly id: string
+  /** User-facing action name. */
+  readonly title: string
+  /** Runtime validator for provider-owned configuration. */
+  readonly config: z.ZodType
+  /** Execute one admitted occurrence. */
+  execute(request: ScheduleActionRequest): Promise<ScheduleActionResult>
+}
+
+/** Browser-safe action and destination choices available for task creation. */
+export interface ScheduleAutomationOptions {
+  readonly providers: readonly { readonly id: string; readonly title: string }[]
+  readonly destinations: readonly { readonly ref: ScheduleDestinationRef; readonly channel: string }[]
+}
+
 /** Durable Session inbox delivery acknowledgment, not model execution completion. */
 export interface ScheduleDeliveryReceipt {
   /** Canonical UTC target of the delivered occurrence. */
@@ -217,6 +331,20 @@ export type ScheduleCatalogEntry = ScheduleRecord & {
   readonly status: 'active' | 'inactive'
   /** Most recent durably acknowledged inbox delivery, when available. */
   readonly lastDelivery?: ScheduleDeliveryReceipt
+}
+
+/** Browser-safe task catalog including typed-action management metadata. */
+export type ScheduleTaskCatalogEntry = ScheduleCatalogEntry & {
+  /** Effective pause state. */
+  readonly paused: boolean
+  /** Effective missed-occurrence policy. */
+  readonly missedRunPolicy: MissedRunPolicy
+  /** Effective prompt or typed action execution. */
+  readonly execution: ScheduleExecution
+  /** Most recent completed typed action occurrence. */
+  readonly lastExecution?: ScheduleExecutionSummary
+  /** Oldest-to-newest bounded action history. */
+  readonly executionHistory: ScheduleExecutionSummary[]
 }
 
 /** Creates one durable reminder record. */
@@ -386,6 +514,22 @@ export interface ScheduleCreateRequest {
   cron?: CronInput
 }
 
+/** Host/UI request for one recurring typed action task. */
+export interface ScheduleActionCreateRequest {
+  /** Required task name. */
+  readonly title: string
+  /** Registered provider, validated config, and opaque destination. */
+  readonly execution: ActionScheduleExecution
+  /** Fixed recurrence interval in seconds. */
+  readonly every_seconds?: number
+  /** Daily wall-clock time in an explicit IANA zone. */
+  readonly daily?: DailyInput
+  /** Weekly wall-clock time and weekday set. */
+  readonly weekly?: WeeklyInput
+  /** Five-field cron expression in an explicit IANA zone. */
+  readonly cron?: CronInput
+}
+
 /** Session-scoped task list, without Agent activation. */
 export interface ScheduleListRequest {
   /** Original Session binding. */
@@ -421,6 +565,24 @@ export interface ScheduleUpdateRequest extends ScheduleDeleteRequest, ScheduleUp
   /** New timing; its kind may differ from the stored record's kind, and an omitted value keeps the committed target. */
   readonly change?: ScheduleTimingChange
 }
+
+/** Compare-and-toggle request for an active task. */
+export interface SchedulePauseRequest extends ScheduleDeleteRequest {
+  /** Complete task projection observed when the management action began. */
+  readonly expected: ScheduleTaskCatalogEntry
+}
+
+/** Durable pause or resume result using the existing lookup/conflict family. */
+export type SchedulePauseResult =
+  | { readonly id: ScheduleId; readonly updated: true; readonly paused: boolean; readonly record: ScheduleRecord }
+  | ScheduleUpdateMiss
+  | ScheduleToolError
+
+/** Model-facing pause/resume result without duplicating the complete task record. */
+export type SchedulePauseValue =
+  | { readonly id: ScheduleId; readonly updated: true; readonly paused: boolean }
+  | ScheduleUpdateMiss
+  | ScheduleToolError
 
 /** Non-mutating compare-and-update outcome: unknown, inactive, or changed since the read. */
 export interface ScheduleUpdateMiss {

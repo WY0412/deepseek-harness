@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/schedule/action-cluster-watch/README.md
+/:
+  en: a98ed630d17f45ac
+  zh: a07546bc5c55e1bc
+/deepseek-ai-dsh-action-cluster-watch:
+  en: 108b1f7e651f180d
+  zh: f03b5fc5532db4f9
+/deepseek-ai-dsh-action-cluster-watch/summary:
+  en: f603e401cff644bd
+  zh: 797088bdaaf8552a
+/deepseek-ai-dsh-action-cluster-watch/use-this-package:
+  en: 238ca02ae422fe7c
+  zh: d4d3b8a402f3bc09
+/deepseek-ai-dsh-action-cluster-watch/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-action-cluster-watch/model-experience/host-cluster-watch-action:
+  en: 0969b631902847a9
+  zh: be9ead3dee4cc0c8
+/deepseek-ai-dsh-action-cluster-watch/model-experience/host-cluster-watch-action/what-the-model-sees:
+  en: 1717c1278c54150e
+  zh: fcf24d9f2cd8bc7a
+/deepseek-ai-dsh-action-cluster-watch/model-experience/host-cluster-watch-action/token-effect:
+  en: 8adc21fe2c19cdd6
+  zh: 9e181786a4f3b73a
+/deepseek-ai-dsh-action-cluster-watch/model-experience/host-cluster-watch-action/kv-cache-effect:
+  en: 2475828df5cb1f34
+  zh: 001ae9fd4bb3b45d
+/deepseek-ai-dsh-action-cluster-watch/known-limitations-and-deferred-work:
+  en: ea1be85206837de6
+  zh: d4eada370bfc9bc0

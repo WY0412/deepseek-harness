@@ -32,7 +32,8 @@ it('acknowledges the real synchronous inbox splice after flush without claiming 
         return releaseFlush.promise
       })
       const commit = vi.fn(async (task: ScheduleTask) => { tasks[0] = task })
-      const runtime = new ScheduleRuntime(ctx, () => tasks, work => work(), commit, { days: 30, records: 200 })
+      const runtime = new ScheduleRuntime(ctx, () => tasks, work => work(), commit,
+        { days: 30, records: 200 }, { days: 30, records: 100 })
       try {
         runtime.requestDrive()
         await flushStarted.promise

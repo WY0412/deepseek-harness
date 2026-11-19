@@ -139,6 +139,30 @@
     - id: schedule
       name: '@deepseek-ai/dsh-schedule'
 
+    - id: schedule-actions
+      name: '@deepseek-ai/dsh-action-registry'
+      disabled: !!js process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1'
+
+    - id: message-destinations
+      name: '@deepseek-ai/dsh-message-destination'
+      disabled: !!js process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1'
+
+    - id: message-destination-dsh-im
+      name: '@deepseek-ai/dsh-message-destination-dsh-im'
+      disabled: !!js "process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1' || !ctx.get('dshIm')"
+
+    - id: schedule-action-cluster-watch
+      name: '@deepseek-ai/dsh-action-cluster-watch'
+      disabled: !!js process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1'
+      config:
+        baseUrl: http://dsh-ack-mcp.dsh.svc:8000
+
+    - id: schedule-action-error-budget
+      name: '@deepseek-ai/dsh-action-error-budget'
+      disabled: !!js process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1'
+      config:
+        baseUrl: http://dsh-ack-mcp.dsh.svc:8000
+
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
     - id: ui-settings-account

@@ -1,6 +1,6 @@
 /**
- * Model-facing `schedule_create`, `schedule_list`, `schedule_update`, and
- * `schedule_delete` tools over the Host `ctx.schedule` service. Mounting the
+ * Model-facing create, list, update, delete, pause, and resume tools over the
+ * Host `ctx.schedule` service. Mounting the
  * plugin registers them in the mounting scope, so a preset decides which
  * agents receive them; every call acts on the calling Agent's Session.
  * @module @deepseek-ai/dsh-tool-schedule
@@ -17,7 +17,7 @@ import {
 } from '@deepseek-ai/dsh-schedule'
 import type {
   AtInput, CronInput, DailyInput, WeeklyInput, InternalScheduleError, ScheduleCreateValue, ScheduleDeleteValue,
-  ScheduleListValue, ScheduleTimingChange, ScheduleToolError, ScheduleUpdateValue,
+  ScheduleListValue, SchedulePauseValue, ScheduleTimingChange, ScheduleToolError, ScheduleUpdateValue,
 } from '@deepseek-ai/dsh-schedule'
 
 /** Plugin name registered with the Loader. */
@@ -174,6 +174,28 @@ const UPDATE_OUTPUT_SCHEMA = {
           required: true,
           enum: ['schedule_not_found', 'schedule_ended', 'schedule_conflict'],
         },
+      },
+    },
+    ...ERROR_SCHEMAS,
+  ],
+} as const
+
+const PAUSE_OUTPUT_SCHEMA = {
+  oneOf: [
+    {
+      type: 'object', additionalProperties: false,
+      properties: {
+        id: { type: 'string', required: true },
+        updated: { type: 'boolean', required: true, const: true },
+        paused: { type: 'boolean', required: true },
+      },
+    },
+    {
+      type: 'object', additionalProperties: false,
+      properties: {
+        id: { type: 'string', required: true },
+        updated: { type: 'boolean', required: true, const: false },
+        code: { type: 'string', required: true, enum: ['schedule_not_found', 'schedule_ended', 'schedule_conflict'] },
       },
     },
     ...ERROR_SCHEMAS,
@@ -425,7 +447,7 @@ const SELECTOR_PARAMETERS = {
 } as const
 
 /**
- * Register the four Schedule tools in the mounting scope.
+ * Register the six Schedule tools in the mounting scope.
  *
  * Each call mutates the Session of the Agent that dispatched it, so a mount
  * outside an agent scope still registers the tools but every call without a
@@ -437,7 +459,7 @@ export function apply(ctx: Context): void {
 }
 
 /**
- * Register the four reminder tools in the scope that resolved the Schedule
+ * Register the six reminder tools in the scope that resolved the Schedule
  * service.
  * @param ctx - Scope whose `schedule` service the tools act through.
  */
@@ -479,6 +501,39 @@ function registerScheduleTools(ctx: Context): void {
     },
     presentCall: args => present('Create reminder', 'other', args.prompt),
   }))
+
+  for (const paused of [true, false] as const) {
+    const operation = paused ? 'pause' : 'resume'
+    ctx.tools.register(defineTool({
+      name: `schedule_${operation}`,
+      description: `${paused ? 'Pause' : 'Resume'} an active reminder without activating its Session.`,
+      parameters: { id: { type: 'string', required: true, description: 'Schedule id returned by schedule_list.' } },
+      output: { schema: PAUSE_OUTPUT_SCHEMA, render: renderValue },
+      async execute(args, exec): Promise<SchedulePauseValue> {
+        if (args.id.length === 0 || args.id.trim() !== args.id) {
+          return { code: 'invalid_rule', message: `schedule_${operation} id must be non-empty without surrounding whitespace.` }
+        }
+        const agent = exec.agent
+        if (agent === undefined) return internalError()
+        const refusal = subagentCallerRefusal(agent)
+        if (refusal !== undefined) return refusal
+        if (exec.signal.aborted) return internalError()
+        const id = ScheduleId(args.id)
+        try {
+          const sessionId = agent.session.id
+          const expected = (await ctx.schedule.taskCatalog())
+            .find(record => record.id === id && record.sessionId === sessionId)
+          if (expected === undefined) return { id, updated: false, code: 'schedule_not_found' }
+          const result = await ctx.schedule[operation]({ sessionId, id, expected }, exec.signal)
+          if (!('record' in result)) return result
+          return { id: result.id, updated: true, paused: result.paused }
+        } catch (error: unknown) {
+          return operationError(error)
+        }
+      },
+      presentCall: args => present(paused ? 'Pause reminder' : 'Resume reminder', 'other', args.id),
+    }))
+  }
 
   ctx.tools.register(defineTool({
     name: 'schedule_list',

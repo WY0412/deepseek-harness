@@ -2,19 +2,20 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { JsonStorageBackend } from '@deepseek-ai/dsh-storage-json'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { MessageId } from '@deepseek-ai/dsh-llm/brand'
-import { scheduleDomain, scheduleTaskSchema, type ScheduleTask } from '../src/storage.ts'
+import { resolveScheduleTaskCompat, scheduleDomain, scheduleTaskSchema, type ScheduleTask } from '../src/storage.ts'
 import {
   createAfterScheduleRecord, createAtScheduleRecord, createDailyScheduleRecord, createEveryScheduleRecord,
   ScheduleId, resolveDailyOccurrence, resolveEveryOccurrence, resolveWeeklyOccurrence,
 } from '../src/domain.ts'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
+import { harness } from './harness.ts'
 
 const roots: string[] = []
 const contexts: Context[] = []
@@ -202,8 +203,54 @@ it('opens old version-1 tasks without status as active without changing the stor
   const facility = new DomainFacility(ctx, { backend: 'memory' })
   const domain = await facility.open(scheduleDomain)
   ctx.effect(() => () => domain.close())
-  expect(domain.table('tasks').get(record.id)).toEqual({ sessionId: 'original', record, status: 'active' })
+  const stored = domain.table('tasks').get(record.id)
+  expect(stored).toEqual({ sessionId: 'original', record, status: 'active' })
+  expect(resolveScheduleTaskCompat(stored!)).toEqual({
+    missedRunPolicy: 'deliver_latest', paused: false,
+    execution: { kind: 'prompt', prompt: record.prompt },
+  })
   expect(pool.versions.get('schedule')).toBe(1)
+})
+
+it('opens future action metadata but compat runtime freezes it without restoring its Session', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-09-16T00:00:00.000Z'))
+  try {
+    const record = createEveryScheduleRecord(
+      ScheduleId('future-action'), 'Inspect cluster', 300,
+      Date.parse('2026-09-15T23:55:00.000Z'), 'Inspect cluster',
+    )
+    const execution = {
+      kind: 'action' as const,
+      provider: 'cluster-watch',
+      config: { clusterId: 'cluster-1' },
+      destination: { provider: 'dsh-im', id: 'v1:opaque', label: '微信测试群', kind: 'group' },
+    }
+    const warning = vi.fn()
+    const test = await harness({
+      onContext: (ctx) => { ctx.logger.warn = warning as typeof ctx.logger.warn },
+      beforeService: async (_ctx, facility) => {
+        const domain = await facility.open(scheduleDomain)
+        await domain.table('tasks').put(record.id, {
+          sessionId: SessionId('future-session'), record, status: 'active',
+          missedRunPolicy: 'skip', paused: false, execution,
+        })
+        await domain.close()
+      },
+    })
+    contexts.push(test.ctx)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(test.resolve).not.toHaveBeenCalled()
+    expect(test.pool.media.get('schedule')!.tables.get('tasks')!.get(record.id)).toEqual({
+      sessionId: 'future-session', record, status: 'active',
+      missedRunPolicy: 'skip', paused: false, execution,
+    })
+    expect(warning).toHaveBeenCalledWith(
+      'schedule: task "future-action" is frozen because action provider "cluster-watch" is unavailable',
+    )
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 const record = createAfterScheduleRecord(ScheduleId('validation'), 'Validate', 1, Date.parse('2026-09-16T00:00:00Z'), 'Validate')
@@ -212,11 +259,39 @@ const lastDelivery = {
 }
 
 it('accepts retained statuses and optional rigorously decoded delivery receipts', () => {
-  expect(scheduleTaskSchema.parse({ sessionId: 'cold', record })).toEqual({ sessionId: 'cold', record, status: 'active' })
+  const defaults = { sessionId: SessionId('cold'), record, status: 'active' as const }
+  expect(scheduleTaskSchema.parse({ sessionId: 'cold', record })).toEqual(defaults)
+  expect(resolveScheduleTaskCompat(defaults)).toEqual({
+    missedRunPolicy: 'deliver_latest', paused: false,
+    execution: { kind: 'prompt', prompt: record.prompt },
+  })
   for (const status of ['active', 'inactive']) {
     expect(scheduleTaskSchema.parse({ sessionId: 'cold', record, status, lastDelivery }))
-      .toEqual({ sessionId: 'cold', record, status, lastDelivery })
+      .toEqual({ ...defaults, status, lastDelivery })
   }
+})
+
+it('strictly decodes future compat metadata without changing ScheduleRecord', () => {
+  const future = {
+    missedRunPolicy: 'skip' as const,
+    paused: true,
+    execution: {
+      kind: 'action' as const,
+      provider: 'cluster-watch',
+      config: { clusterId: 'cluster-1', sections: ['workloads', 'nodes'] },
+      destination: { provider: 'dsh-im', id: 'v1:opaque', label: '微信测试群', kind: 'group' },
+    },
+    lastExecution: {
+      occurrenceAt: '2026-09-16T00:00:00.000Z', startedAt: '2026-09-16T00:00:01.000Z',
+      finishedAt: '2026-09-16T00:00:02.000Z', outcome: 'succeeded' as const,
+      code: 'unchanged', summary: 'No cluster changes', delivery: 'not_requested' as const,
+    },
+  }
+  expect(scheduleTaskSchema.parse({ sessionId: 'cold', record, ...future })).toEqual({
+    sessionId: 'cold', record, status: 'active', ...future,
+  })
+  expect(future.execution).not.toHaveProperty('prompt')
+  expect(record).toHaveProperty('prompt', 'Validate')
 })
 
 it.each([
