@@ -225,20 +225,219 @@ function mount(
   }
 }
 
-it('creates typed action presets with an opaque connected destination and online-only copy', async () => {
+it('creates a cluster snapshot from a labelled inline card with structured time and destination controls', async () => {
   const test = mount()
   fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
-  await screen.findByRole('option', { name: '值班群 · wechat' })
-  fireEvent.change(screen.getByRole('textbox', { name: en['action.clusterId'] }), { target: { value: `c${'a'.repeat(32)}` } })
-  fireEvent.change(screen.getByRole('combobox', { name: en['action.destination'] }), { target: { value: 'opaque' } })
-  expect(screen.getByText(en['action.onlineOnly'])).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: en['action.create'] }))
-  await waitFor(() => {
-    expect(test.props.onCreateAction).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'cluster-watch', clusterId: `c${'a'.repeat(32)}`,
-      destination: expect.objectContaining({ provider: 'dsh-im', id: 'opaque' }),
-    }))
+  const card = await screen.findByRole('region', { name: 'Create cluster snapshot task' })
+  expect(within(card).getByText(en['action.clusterId'])).toBeTruthy()
+  expect(within(card).getByText(en['action.time'])).toBeTruthy()
+  expect(within(card).getByText(en['action.destination'])).toBeTruthy()
+  expect(within(card).getByText(en['action.onlineOnly'])).toBeTruthy()
+
+  fireEvent.change(within(card).getByRole('textbox', { name: en['action.clusterId'] }), {
+    target: { value: `c${'a'.repeat(32)}` },
   })
+  const time = within(card).getByRole('button', { name: en['action.time'] })
+  expect(time.textContent).toContain('Every day 09:00')
+  fireEvent.click(time)
+  expect(screen.getByRole('listbox', { name: en['timing.hour'] })).toBeTruthy()
+  expect(screen.getByRole('listbox', { name: en['timing.minute'] })).toBeTruthy()
+  expect(screen.queryByRole('listbox', { name: en['timing.second'] })).toBeNull()
+  fireEvent.click(within(screen.getByRole('listbox', { name: en['timing.hour'] })).getByRole('option', { name: '10' }))
+  fireEvent.click(within(screen.getByRole('listbox', { name: en['timing.minute'] })).getByRole('option', { name: '30' }))
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+  expect(screen.queryByRole('listbox', { name: en['timing.hour'] })).toBeNull()
+  expect(document.activeElement).toBe(time)
+  expect(time.textContent).toContain('Every day 10:30')
+
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  const destination = await screen.findByRole('menuitem', { name: /值班群.*wechat/u })
+  fireEvent.click(destination)
+  expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('值班群')
+  expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('wechat')
+
+  fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
+  const create = vi.mocked(test.props.onCreateAction)
+  await waitFor(() => { expect(create).toHaveBeenCalledOnce() })
+  const request = create.mock.calls[0]![0]
+  expect(request.provider).toBe('cluster-watch')
+  expect(request.clusterId).toBe(`c${'a'.repeat(32)}`)
+  expect(request.destination).toEqual({ provider: 'dsh-im', id: 'opaque', label: '值班群', kind: 'group' })
+  expect(request.time).toBe('10:30:00')
+  expect(request.timeZone.length).toBeGreaterThan(0)
+})
+
+it('creates an error-budget task without a hidden cluster id', async () => {
+  const test = mount()
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  const card = await screen.findByRole('region', { name: 'Create error budget task' })
+  expect(within(card).queryByRole('textbox', { name: en['action.clusterId'] })).toBeNull()
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /值班群.*wechat/u }))
+  fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
+  const create = vi.mocked(test.props.onCreateAction)
+  await waitFor(() => { expect(create).toHaveBeenCalledOnce() })
+  const request = create.mock.calls[0]![0]
+  expect(request).not.toHaveProperty('clusterId')
+  expect(request.provider).toBe('error-budget')
+  expect(request.destination.id).toBe('opaque')
+  expect(request.time).toBe('09:00:00')
+  expect(request.timeZone.length).toBeGreaterThan(0)
+})
+
+it('shows an actionable empty destination state and keeps creation disabled', async () => {
+  mount({}, en, { loadAutomationOptions: vi.fn(async () => ({ providers: [], destinations: [] })) })
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  const card = await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  expect(within(card).getByText(en['action.destinationEmpty'])).toBeTruthy()
+  expect(within(card).getByRole('button', { name: en['action.create'] }).hasAttribute('disabled')).toBe(true)
+})
+
+it('retries a failed destination read without closing the card', async () => {
+  const load = vi.fn<TaskManagerPageProps['loadAutomationOptions']>()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce({
+      providers: [],
+      destinations: [{ ref: { provider: 'dsh-im', id: 'retry-target', label: '发布群', kind: 'group' }, channel: 'wechat' }],
+    })
+  mount({}, en, { loadAutomationOptions: load })
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  const card = await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  expect(await within(card).findByText(en['action.destinationError'])).toBeTruthy()
+  fireEvent.click(within(card).getByRole('button', { name: en['action.retry'] }))
+  await waitFor(() => { expect(load).toHaveBeenCalledTimes(2) })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  expect(await screen.findByRole('menuitem', { name: /发布群.*wechat/u })).toBeTruthy()
+})
+
+it('keeps all field values after task creation fails', async () => {
+  const create = vi.fn<TaskManagerPageProps['onCreateAction']>(async () => { throw new Error('create failed') })
+  mount({}, en, { onCreateAction: create })
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  const card = await screen.findByRole('region', { name: en['action.card.clusterWatch'] })
+  const cluster = within(card).getByRole('textbox', { name: en['action.clusterId'] })
+  fireEvent.change(cluster, { target: { value: `c${'b'.repeat(32)}` } })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /值班群.*wechat/u }))
+  fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
+  expect(await within(card).findByText(en['action.createError'])).toBeTruthy()
+  expect((cluster as HTMLInputElement).value).toBe(`c${'b'.repeat(32)}`)
+  expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('值班群')
+})
+
+it('clears private fields when switching type and resets the form after cancellation', async () => {
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  let card = await screen.findByRole('region', { name: en['action.card.clusterWatch'] })
+  fireEvent.change(within(card).getByRole('textbox', { name: en['action.clusterId'] }), {
+    target: { value: `c${'c'.repeat(32)}` },
+  })
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  card = await screen.findByRole('region', { name: en['action.card.clusterWatch'] })
+  expect(within(card).getByRole<HTMLInputElement>('textbox', { name: en['action.clusterId'] }).value).toBe('')
+
+  fireEvent.change(within(card).getByRole('textbox', { name: en['action.clusterId'] }), {
+    target: { value: `c${'d'.repeat(32)}` },
+  })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.close'] }))
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  card = await screen.findByRole('region', { name: en['action.card.clusterWatch'] })
+  expect(within(card).getByRole<HTMLInputElement>('textbox', { name: en['action.clusterId'] }).value).toBe('')
+  expect(within(card).getByRole('button', { name: en['action.time'] }).textContent).toContain('Every day 09:00')
+  expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent)
+    .toContain(en['action.destinationPlaceholder'])
+})
+
+it('collapses action fields from the card container width, not only the viewport width', () => {
+  const stylesheet = readFileSync(resolve(import.meta.dirname, '../src/client/ActionCreateCard.module.css'), 'utf8')
+  expect(stylesheet).toMatch(/\.card\s*\{[^}]*container-type:\s*inline-size;/u)
+  expect(stylesheet).toMatch(/@container\s*\(max-width:\s*640px\)/u)
+  expect(stylesheet).toMatch(/@container[^]*\.fieldsCluster,[^]*\.fieldsBudget\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/u)
+})
+
+it('ignores an older destination response after reopening for another action', async () => {
+  let resolveFirst!: (value: Awaited<ReturnType<TaskManagerPageProps['loadAutomationOptions']>>) => void
+  let resolveSecond!: (value: Awaited<ReturnType<TaskManagerPageProps['loadAutomationOptions']>>) => void
+  const first = new Promise<Awaited<ReturnType<TaskManagerPageProps['loadAutomationOptions']>>>((resolve) => { resolveFirst = resolve })
+  const second = new Promise<Awaited<ReturnType<TaskManagerPageProps['loadAutomationOptions']>>>((resolve) => { resolveSecond = resolve })
+  const load = vi.fn<TaskManagerPageProps['loadAutomationOptions']>()
+    .mockReturnValueOnce(first)
+    .mockReturnValueOnce(second)
+  mount({}, en, { loadAutomationOptions: load })
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  fireEvent.click(screen.getByRole('button', { name: en['action.close'] }))
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  await act(async () => {
+    resolveSecond({
+      providers: [],
+      destinations: [{ ref: { provider: 'dsh-im', id: 'new', label: '新目标', kind: 'group' }, channel: 'wechat' }],
+    })
+  })
+  const card = screen.getByRole('region', { name: en['action.card.errorBudget'] })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  expect(screen.getByRole('menuitem', { name: /新目标.*wechat/u })).toBeTruthy()
+  fireEvent.keyDown(document, { key: 'Escape' })
+  await act(async () => {
+    resolveFirst({
+      providers: [],
+      destinations: [{ ref: { provider: 'dsh-im', id: 'old', label: '旧目标', kind: 'group' }, channel: 'wechat' }],
+    })
+  })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  expect(screen.queryByRole('menuitem', { name: /旧目标/u })).toBeNull()
+  expect(screen.getByRole('menuitem', { name: /新目标.*wechat/u })).toBeTruthy()
+})
+
+it('does not submit a second create request while the first is pending', async () => {
+  let settle!: () => void
+  const pending = new Promise<void>((resolve) => { settle = resolve })
+  const create = vi.fn<TaskManagerPageProps['onCreateAction']>(() => pending)
+  mount({}, en, { onCreateAction: create })
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  const card = await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /值班群.*wechat/u }))
+  const submit = within(card).getByRole('button', { name: en['action.create'] })
+  fireEvent.click(submit)
+  fireEvent.click(submit)
+  expect(create).toHaveBeenCalledTimes(1)
+  await act(async () => { settle(); await pending })
+})
+
+it('keeps the current action generation when its header entry is clicked during creation', async () => {
+  let settle!: () => void
+  const pending = new Promise<void>((resolve) => { settle = resolve })
+  const create = vi.fn<TaskManagerPageProps['onCreateAction']>(() => pending)
+  mount({}, en, { onCreateAction: create })
+  const entry = screen.getByRole('button', { name: en['action.errorBudget'] })
+  fireEvent.click(entry)
+  const card = await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  fireEvent.click(within(card).getByRole('button', { name: en['action.destination'] }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /值班群.*wechat/u }))
+  fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
+  expect(entry.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(entry)
+  await act(async () => { settle(); await pending })
+  expect(create).toHaveBeenCalledOnce()
+  expect(screen.queryByRole('region', { name: en['action.card.errorBudget'] })).toBeNull()
+})
+
+it('does not close a newly opened card when an older create request settles', async () => {
+  let settle!: () => void
+  const pending = new Promise<void>((resolve) => { settle = resolve })
+  mount({}, en, { onCreateAction: vi.fn(() => pending) })
+  fireEvent.click(screen.getByRole('button', { name: en['action.errorBudget'] }))
+  const firstCard = await screen.findByRole('region', { name: en['action.card.errorBudget'] })
+  fireEvent.click(within(firstCard).getByRole('button', { name: en['action.destination'] }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: /值班群.*wechat/u }))
+  fireEvent.click(within(firstCard).getByRole('button', { name: en['action.create'] }))
+
+  fireEvent.click(screen.getByRole('button', { name: en['action.clusterWatch'] }))
+  expect(await screen.findByRole('region', { name: en['action.card.clusterWatch'] })).toBeTruthy()
+  await act(async () => { settle(); await pending })
+  expect(screen.getByRole('region', { name: en['action.card.clusterWatch'] })).toBeTruthy()
 })
 
 function taskNames(): string[] {

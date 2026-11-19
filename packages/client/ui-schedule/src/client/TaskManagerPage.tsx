@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { ScheduleAutomationOptions, ScheduleCatalogEntry, ScheduleDestinationRef, ScheduleId, ScheduleTaskCatalogEntry } from '@deepseek-ai/dsh-schedule/client'
 import type { CatalogSnapshot } from './catalog-source.ts'
 import { CatalogFeedback } from './CatalogFeedback.tsx'
+import { ActionCreateCard } from './ActionCreateCard.tsx'
 import { TaskDetail, useTaskDetail, type TaskDetailInjected } from './TaskDetail.tsx'
 import { useRelativeClock } from './relative-clock.ts'
 import { formatScheduleFrequency, nextRunParts, taskName, zoneLabel } from './schedule-format.ts'
@@ -21,7 +22,7 @@ export interface TaskManagerInjected extends Omit<TaskDetailInjected, 'hooks'> {
   readonly hooks: { readonly catalog: HostObservable<CatalogSnapshot<ScheduleTaskCatalogEntry>> }
   /**
    * Start a new Session, where a reminder is created by asking the model to
-   * schedule it. The page deliberately has no creation form of its own.
+   * schedule it. Typed automation actions use the inline form on this page.
    */
   readonly onNewTask: () => void
   readonly loadAutomationOptions: () => Promise<ScheduleAutomationOptions>
@@ -60,7 +61,10 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
   const [clusterId, setClusterId] = useState('')
   const [actionTime, setActionTime] = useState('09:00:00')
   const [creatingAction, setCreatingAction] = useState(false)
-  const [actionError, setActionError] = useState(false)
+  const [directoryStatus, setDirectoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [createError, setCreateError] = useState(false)
+  const directoryGeneration = useRef(0)
+  const createGeneration = useRef(0)
   // The rows state how long remains, so they read the shared ticking clock
   // rather than a value sampled at mount: a catalog refresh can move the target
   // this text describes.
@@ -112,6 +116,40 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
     setSelectedId(null)
   }
 
+  const loadDestinations = (): void => {
+    const generation = ++directoryGeneration.current
+    setDirectoryStatus('loading')
+    void loadAutomationOptions().then((options) => {
+      if (directoryGeneration.current !== generation) return
+      setAutomationOptions(options)
+      setDestinationId(current => options.destinations.some(item => item.ref.id === current) ? current : '')
+      setDirectoryStatus('ready')
+    }).catch(() => {
+      if (directoryGeneration.current === generation) setDirectoryStatus('error')
+    })
+  }
+
+  const openAction = (kind: 'cluster-watch' | 'error-budget'): void => {
+    if (creatingAction && kind === actionKind) return
+    createGeneration.current += 1
+    if (kind === 'error-budget') setClusterId('')
+    setActionKind(kind)
+    setCreateError(false)
+    loadDestinations()
+  }
+
+  const closeAction = (): void => {
+    directoryGeneration.current += 1
+    createGeneration.current += 1
+    setActionKind(null)
+    setAutomationOptions(null)
+    setDestinationId('')
+    setClusterId('')
+    setActionTime('09:00:00')
+    setDirectoryStatus('idle')
+    setCreateError(false)
+  }
+
   return (
     <section
       className={clsx(css.page, selected !== undefined && css.hasDetails)}
@@ -134,48 +172,51 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
               <h1 ref={headingRef} tabIndex={-1}>{t('title')}</h1>
               <div className={css.creationActions}>
                 <Button variant="primary" size="sm" className={css.newButton} icon={<IconPlusOutlineRegular size={13} />} onClick={onNewTask}>{t('new.action')}</Button>
-                <Button size="sm" onClick={() => {
-                  setActionKind('cluster-watch'); setActionError(false)
-                  void loadAutomationOptions().then(setAutomationOptions).catch(() => { setActionError(true) })
+                <Button size="sm" disabled={creatingAction && actionKind === 'cluster-watch'} onClick={() => {
+                  openAction('cluster-watch')
                 }}>{t('action.clusterWatch')}</Button>
-                <Button size="sm" onClick={() => {
-                  setActionKind('error-budget'); setActionError(false)
-                  void loadAutomationOptions().then(setAutomationOptions).catch(() => { setActionError(true) })
+                <Button size="sm" disabled={creatingAction && actionKind === 'error-budget'} onClick={() => {
+                  openAction('error-budget')
                 }}>{t('action.errorBudget')}</Button>
               </div>
             </div>
-            {actionKind !== null && <form className={css.filters} onSubmit={(event) => {
-              event.preventDefault()
-              const destination = automationOptions?.destinations.find(item => item.ref.id === destinationId)?.ref
-              if (destination === undefined) { setActionError(true); return }
-              setCreatingAction(true); setActionError(false)
-              void onCreateAction({
-                provider: actionKind,
-                ...(actionKind === 'cluster-watch' ? { clusterId } : {}),
-                destination,
-                time: actionTime,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              })
-                .then(() => { setActionKind(null); return onRetry() })
-                .catch(() => { setActionError(true) })
-                .finally(() => { setCreatingAction(false) })
-            }}>
-              <strong>{t(actionKind === 'cluster-watch' ? 'action.clusterWatch' : 'action.errorBudget')}</strong>
-              {actionKind === 'cluster-watch' && <Input aria-label={t('action.clusterId')} placeholder={t('action.clusterId')} value={clusterId} onChange={(event) => { setClusterId(event.target.value) }} />}
-              <Input type="time" step={1} aria-label={t('action.time')} value={actionTime} onChange={(event) => { setActionTime(event.target.value) }} />
-              <select aria-label={t('action.destination')} value={destinationId} onChange={(event) => { setDestinationId(event.target.value) }}>
-                <option value="">{t('action.destinationPlaceholder')}</option>
-                {(automationOptions?.destinations ?? []).map(item => (
-                  <option key={item.ref.id} value={item.ref.id}>
-                    {item.ref.label} · {item.channel}
-                  </option>
-                ))}
-              </select>
-              <span>{t('action.onlineOnly')}</span>
-              {actionError && <span role="alert">{t('action.error')}</span>}
-              <Button type="submit" variant="primary" size="sm" disabled={creatingAction || destinationId === '' || (actionKind === 'cluster-watch' && !/^c[a-z0-9]{32}$/u.test(clusterId))}>{t(creatingAction ? 'action.creating' : 'action.create')}</Button>
-              <Button type="button" size="sm" onClick={() => { setActionKind(null) }}>{t('rule.cancel')}</Button>
-            </form>}
+            {actionKind !== null && <ActionCreateCard
+              kind={actionKind}
+              clusterId={clusterId}
+              time={actionTime}
+              destinations={automationOptions?.destinations ?? []}
+              directoryStatus={directoryStatus}
+              destinationId={destinationId}
+              creating={creatingAction}
+              createError={createError}
+              onClusterIdChange={setClusterId}
+              onTimeChange={setActionTime}
+              onDestinationChange={setDestinationId}
+              onRetryDestinations={loadDestinations}
+              onSubmit={() => {
+                const destination = automationOptions?.destinations.find(item => item.ref.id === destinationId)?.ref
+                if (destination === undefined) { setCreateError(true); return }
+                const generation = createGeneration.current
+                setCreatingAction(true); setCreateError(false)
+                void onCreateAction({
+                  provider: actionKind,
+                  ...(actionKind === 'cluster-watch' ? { clusterId } : {}),
+                  destination,
+                  time: actionTime,
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                })
+                  .then(() => {
+                    if (createGeneration.current === generation) closeAction()
+                    return onRetry()
+                  })
+                  .catch(() => {
+                    if (createGeneration.current === generation) setCreateError(true)
+                  })
+                  .finally(() => { setCreatingAction(false) })
+              }}
+              onCancel={closeAction}
+              t={t}
+            />}
             <div className={css.filters}>
               <div className={css.filterTabs} role="group" aria-label={t('statusFilter.label')}>
                 {(['all', 'active', 'inactive'] as const).map(value => (
@@ -240,7 +281,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
                             {record.status === 'inactive'
                               && <span className={css.metadata}>{t('status.inactive')}</span>}
                             <span className={css.metadata}>{frequency(record)}</span>
-                            {record.execution?.kind === 'action' && <span className={css.metadata}>
+                            {record.execution.kind === 'action' && <span className={css.metadata}>
                               {record.paused ? t('action.paused') : t('action.onlineOnly')}
                               {record.lastExecution === undefined ? '' : ` · ${record.lastExecution.outcome}/${record.lastExecution.delivery}`}
                             </span>}
@@ -253,7 +294,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
                           </span>
                         </span>
                       </Button>
-                      {record.execution?.kind === 'action' && record.status === 'active' && <Button size="sm" onClick={() => { void onTogglePause(record) }}>
+                      {record.execution.kind === 'action' && record.status === 'active' && <Button size="sm" onClick={() => { void onTogglePause(record) }}>
                         {t(record.paused ? 'action.resume' : 'action.pause')}
                       </Button>}
                     </li>
