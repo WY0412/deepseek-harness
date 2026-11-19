@@ -1554,6 +1554,14 @@ describe('Harness runtime image publication', () => {
       image_digest: '${{ steps.final_push.outputs.digest }}',
     })
   })
+
+  it('declares every dynamic FROM argument in Dockerfile global scope', () => {
+    const dockerfile = readFileSync(resolve(root, 'deploy/Dockerfile'), 'utf8')
+    const firstFrom = dockerfile.indexOf('\nFROM ')
+    expect(firstFrom).toBeGreaterThanOrEqual(0)
+    expect(dockerfile.indexOf('ARG NODE_BASE_IMAGE')).toBeLessThan(firstFrom)
+    expect(dockerfile.indexOf('ARG DSH_RUNTIME_BASE_IMAGE')).toBeLessThan(firstFrom)
+  })
 })
 
 describe('Git hooks', () => {
