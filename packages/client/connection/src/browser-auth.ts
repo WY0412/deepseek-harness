@@ -20,6 +20,10 @@ const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
 const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
 /** Survives a Connection reload of the same process owner. A second GET /?token= must not mint. */
 const PROCESS_LAUNCH_USED = new WeakMap<object, true>()
+const RECOVERY_TOKEN_MILLISECONDS = 60_000
+const RECOVERY_QUERY = 'recovery'
+const RECOVERY_ATTEMPTED = '1'
+const CONTROL_HEADER = 'x-dsh-browser-auth-control'
 
 interface StoredSecretPayload {
   readonly version: typeof STORED_SECRET_VERSION
@@ -195,6 +199,7 @@ async function initializeSecret(credentials: CredentialProvider): Promise<Buffer
 export class BrowserAuth {
   private readonly launchToken: string
   private readonly maxAgeMilliseconds: number
+  private recoveryToken: { value: string; expiresAt: number } | undefined
 
   private constructor(
     private readonly processOwner: object,
@@ -236,6 +241,28 @@ export class BrowserAuth {
     return url.href
   }
 
+  /** Replace any outstanding browser-recovery credential with one fresh token. */
+  issueRecoveryToken(now = Date.now()): string {
+    const value = encodeBase64Url(randomBytes(SECRET_BYTES))
+    this.recoveryToken = { value, expiresAt: now + RECOVERY_TOKEN_MILLISECONDS }
+    return value
+  }
+
+  /** Internal control-plane endpoint; its caller secret is scoped to this process. */
+  reissueForControl(req: ConnectionIndexRequest, res: ConnectionIndexResponse): void {
+    const expected = process.env.DSH_BROWSER_AUTH_CONTROL_TOKEN
+    const actual = header(req.headers, CONTROL_HEADER)
+    if (req.method !== 'POST' || expected === undefined || expected === '' || actual === undefined
+      || !tokenMatches(actual, expected)) {
+      res.writeHead(403, { 'cache-control': 'no-store', 'content-type': 'application/json; charset=utf-8' })
+      res.end('{"error":"forbidden"}')
+      return
+    }
+    const token = this.issueRecoveryToken()
+    res.writeHead(200, { 'cache-control': 'no-store', 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ token }))
+  }
+
   /**
    * Authenticate an index request. A valid root query token mints the cookie
    * and redirects to the directory-relative clean `./`; a valid cookie lets
@@ -255,9 +282,14 @@ export class BrowserAuth {
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
     if (tokens.length > 0) {
       const authority = requestAudience(req.headers, secure)
+      const recovery = this.recoveryToken
+      const now = Date.now()
+      const launchMatches = !PROCESS_LAUNCH_USED.has(this.processOwner)
+        && tokenMatches(tokens.join(''), this.launchToken)
+      const recoveryMatches = recovery !== undefined && recovery.expiresAt > now
+        && tokenMatches(tokens.join(''), recovery.value)
       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
-        && authority !== undefined && !PROCESS_LAUNCH_USED.has(this.processOwner)
-        && tokenMatches(tokens.join(''), this.launchToken)) {
+        && authority !== undefined && (launchMatches || recoveryMatches)) {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
@@ -266,12 +298,15 @@ export class BrowserAuth {
           issuedAt,
           expiresAt,
         }, this.secret)
-        PROCESS_LAUNCH_USED.set(this.processOwner, true)
+        if (launchMatches) PROCESS_LAUNCH_USED.set(this.processOwner, true)
+        if (recoveryMatches) this.recoveryToken = undefined
         // Not a launch URL. tokenFromLine ignores a line that is not a URL with ?token=.
         console.log('dsh web: entry used')
         res.writeHead(303, {
           'cache-control': 'no-store',
-          'location': './',
+          'location': url.searchParams.get(RECOVERY_QUERY) === RECOVERY_ATTEMPTED
+            ? `./?${RECOVERY_QUERY}=${RECOVERY_ATTEMPTED}`
+            : './',
           'referrer-policy': 'no-referrer',
           'set-cookie': sessionCookie(
             cookieName(authority), value, expiresAt, Math.floor(this.maxAgeMilliseconds / 1000), secure,
@@ -292,9 +327,48 @@ export class BrowserAuth {
       this.writeUnauthorized(req, res)
       return false
     }
-    if (this.isAuthenticated(req, secure)) return true
+    if (this.isAuthenticated(req, secure)) {
+      if (url.pathname === '/' && url.searchParams.get(RECOVERY_QUERY) === RECOVERY_ATTEMPTED) {
+        res.writeHead(303, {
+          'cache-control': 'no-store',
+          'location': './',
+          'referrer-policy': 'no-referrer',
+        })
+        res.end()
+        return false
+      }
+      return true
+    }
+    if (req.method === 'GET' && url.pathname === '/'
+      && url.searchParams.get(RECOVERY_QUERY) !== RECOVERY_ATTEMPTED
+      && this.writeRecoveryRedirect(req, res, secure)) return false
     this.writeUnauthorized(req, res)
     return false
+  }
+
+  private writeRecoveryRedirect(
+    req: ConnectionIndexRequest,
+    res: ConnectionIndexResponse,
+    secure: boolean,
+  ): boolean {
+    const configured = process.env.DSH_BROWSER_RECOVERY_URL
+    const audience = requestAudience(req.headers, secure)
+    if (configured === undefined || audience === undefined) return false
+    try {
+      const recovery = new URL(configured)
+      if (recovery.protocol !== 'https:') return false
+      recovery.search = ''
+      recovery.searchParams.set('host', new URL(secure ? audience : `http://${audience}`).hostname)
+      res.writeHead(302, {
+        'cache-control': 'no-store',
+        'location': recovery.href,
+        'referrer-policy': 'no-referrer',
+      })
+      res.end()
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

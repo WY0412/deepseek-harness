@@ -143,6 +143,11 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
       table.push({ kind: 'global', name: '__DSH_TRUSTED_HOSTS__', value: trustedPageHostnames(trustedHosts) })
     })
     const fetchHandler = connection.createSharedFetchHandler(API_PATH)
+    const recoveryRoute: WebRoute = {
+      kind: 'exact',
+      path: '/_dsh/browser-auth/reissue',
+      handler: (req, res) => { connection.reissueBrowserToken(req, res) },
+    }
     const route: WebRoute = {
       kind: 'prefix',
       path: API_PATH,
@@ -157,6 +162,10 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
       },
     }
     webCtx.effect(() => webCtx.webServer.register(route), 'client-connection: /api route')
+    webCtx.effect(
+      () => webCtx.webServer.register(recoveryRoute),
+      'client-connection: browser auth recovery route',
+    )
   })
   ctx.inject(['attachments'], (attachmentCtx) => {
     assertImageBodyCapacity(attachmentCtx, maxRequestBodyBytes)

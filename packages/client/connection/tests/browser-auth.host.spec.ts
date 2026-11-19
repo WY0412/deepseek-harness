@@ -219,6 +219,77 @@ describe('BrowserAuth', () => {
     }
   })
 
+  it('rotates a sixty-second recovery token and accepts it only once', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-19T00:00:00.000Z'))
+    const auth = await createAuth(new RecordCredentials())
+    exchange(auth)
+
+    const stale = auth.issueRecoveryToken()
+    const current = auth.issueRecoveryToken()
+    expect(current).not.toBe(stale)
+
+    const staleResponse = response()
+    expect(auth.authorizeIndex(request(`/?token=${stale}&recovery=1`), staleResponse.value)).toBe(false)
+    expect(staleResponse.state.status).toBe(401)
+
+    const accepted = response()
+    expect(auth.authorizeIndex(request(`/?token=${current}&recovery=1`), accepted.value)).toBe(false)
+    expect(accepted.state.status).toBe(303)
+    expect(accepted.state.headers?.location).toBe('./?recovery=1')
+    expect(accepted.state.headers?.['set-cookie']).toBeDefined()
+
+    const replayed = response()
+    expect(auth.authorizeIndex(request(`/?token=${current}&recovery=1`), replayed.value)).toBe(false)
+    expect(replayed.state.status).toBe(401)
+
+    const expired = auth.issueRecoveryToken()
+    vi.advanceTimersByTime(60_001)
+    const expiredResponse = response()
+    expect(auth.authorizeIndex(request(`/?token=${expired}&recovery=1`), expiredResponse.value)).toBe(false)
+    expect(expiredResponse.state.status).toBe(401)
+  })
+
+  it('redirects one missing-cookie page to recovery and stops after an attempted recovery', async () => {
+    vi.stubEnv('DSH_BROWSER_RECOVERY_URL', 'https://dshk8syw.com/session/recover')
+    const auth = await createAuth(new RecordCredentials())
+
+    const first = response()
+    expect(auth.authorizeIndex(request('/', 'bahnn016.dshk8syw.com'), first.value, true)).toBe(false)
+    expect(first.state).toMatchObject({
+      status: 302,
+      headers: {
+        'cache-control': 'no-store',
+        location: 'https://dshk8syw.com/session/recover?host=bahnn016.dshk8syw.com',
+        'referrer-policy': 'no-referrer',
+      },
+    })
+
+    const attempted = response()
+    expect(auth.authorizeIndex(request('/?recovery=1', 'bahnn016.dshk8syw.com'), attempted.value, true)).toBe(false)
+    expect(attempted.state.status).toBe(401)
+    vi.unstubAllEnvs()
+  })
+
+  it('protects recovery-token issuance with the process control secret', async () => {
+    vi.stubEnv('DSH_BROWSER_AUTH_CONTROL_TOKEN', 'control-secret')
+    const auth = await createAuth(new RecordCredentials())
+    const denied = response()
+    auth.reissueForControl({
+      method: 'POST', url: '/_dsh/browser-auth/reissue', headers: { 'x-dsh-browser-auth-control': 'wrong' },
+    }, denied.value)
+    expect(denied.state.status).toBe(403)
+    expect(denied.state.body).not.toContain('control-secret')
+
+    const allowed = response()
+    auth.reissueForControl({
+      method: 'POST', url: '/_dsh/browser-auth/reissue', headers: { 'x-dsh-browser-auth-control': 'control-secret' },
+    }, allowed.value)
+    expect(allowed.state.status).toBe(200)
+    expect(JSON.parse(allowed.state.body ?? '')).toMatchObject({ token: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u) })
+    vi.unstubAllEnvs()
+  })
+
   it('rejects tampering, expiry, future issuance, and a longer lifetime than configured', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-24T00:00:00.000Z'))

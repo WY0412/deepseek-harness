@@ -128,6 +128,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
     return this.browserAuth.authenticatedUrl(baseUrl)
   }
 
+  /** Serve the process-scoped browser credential rotation endpoint. */
+  reissueBrowserToken(request: ConnectionIndexRequest, response: ConnectionIndexResponse): void {
+    this.browserAuth.reissueForControl(request, response)
+  }
+
   /**
    * Compose one shared-channel Fetch handler from exact routes and its interceptor.
    * @param channel - shared channel mounted by Connection.
