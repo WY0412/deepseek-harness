@@ -109,7 +109,9 @@ jobs:
           target: runtime-base
           push: true
           tags: ${{ steps.base.outputs.image }}
-          build-args: NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
+          build-args: |
+            NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
+            DSH_RUNTIME_BASE_IMAGE=${{ steps.node_base.outputs.image }}
 
       - name: Read dependency base manifest
         run: docker manifest inspect '${{ steps.base.outputs.image }}' > "$RUNNER_TEMP/base-manifest.json"

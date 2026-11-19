@@ -1532,11 +1532,17 @@ describe('Harness runtime image publication', () => {
     expect(source).not.toMatch(/imagetools inspect[^\n]*\| awk/)
 
     const assemble = steps.find(step => step.name === 'Assemble runtime')
+    const baseBuild = steps.find(step => step.name === 'Build dependency base')
     const probeIndex = steps.findIndex(step => step.name === 'Probe final runtime')
     const gateIndex = steps.findIndex(step => step.name === 'Enforce final layer gate')
     const pushIndex = steps.findIndex(step => step.name === 'Push final image')
     const dispatchIndex = steps.findIndex(step => step.name === 'Trigger Pool image release')
     expect(assemble).toMatchObject({ id: 'runtime' })
+    expect(baseBuild).toMatchObject({
+      with: {
+        'build-args': expect.stringContaining('DSH_RUNTIME_BASE_IMAGE=${{ steps.node_base.outputs.image }}'),
+      },
+    })
     expect(probeIndex).toBeGreaterThanOrEqual(0)
     expect(gateIndex).toBeGreaterThan(probeIndex)
     expect(pushIndex).toBeGreaterThan(gateIndex)
