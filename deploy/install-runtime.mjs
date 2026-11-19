@@ -4,10 +4,13 @@
 // addons for this image. Those packages are named *-linux-x64-gnu and are
 // fetched afterwards for linux x64 glibc, not for the machine running this script.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { pruneRuntime, runtimeInventory, splitRuntime } from './runtime-layout.mjs'
 
 const GNU_ADDON = 'node-addon-require-builtin-linux-x64-gnu'
 
@@ -95,7 +98,8 @@ if (destination === undefined || directories.length === 0) {
 }
 
 const dependencies = {}
-for (const directory of directories) {
+const applicationPackages = new Set()
+for (const [index, directory] of directories.entries()) {
   const tarballs = readdirSync(directory).filter(name => name.endsWith('.tgz')).sort()
   if (tarballs.length === 0) throw new Error(`${directory} holds no packed tarball`)
   for (const filename of tarballs) {
@@ -104,6 +108,7 @@ for (const directory of directories) {
     const name = JSON.parse(json).name
     if (typeof name !== 'string' || name === '') throw new Error(`${tarball} has no package name`)
     dependencies[name] = pathToFileURL(tarball).href
+    if (index === 0) applicationPackages.add(name)
   }
 }
 
@@ -130,9 +135,28 @@ try {
     throw new Error(`runtime install did not select ${GNU_ADDON}`)
   }
   npmInstall(['--no-save', '--os=linux', '--cpu=x64', '--libc=glibc', ...gnu])
+  const runtimeRoot = join(consumer, 'node_modules')
+  const removed = pruneRuntime(runtimeRoot)
   execFileSync('rm', ['-rf', destination])
-  execFileSync('mkdir', ['-p', destination])
-  execFileSync('cp', ['-a', join(consumer, 'node_modules'), join(destination, 'node_modules')])
+  const base = join(destination, 'base', 'node_modules')
+  const app = join(destination, 'app', 'node_modules')
+  const split = splitRuntime({ source: runtimeRoot, base, app, appPackages: applicationPackages })
+  const dsh = join(app, '.bin', 'dsh')
+  try {
+    statSync(dsh)
+  } catch {
+    throw new Error('runtime application overlay has no executable .bin/dsh')
+  }
+  const nodeBaseDigest = process.env.DSH_NODE_BASE_DIGEST
+  if (nodeBaseDigest === undefined) throw new Error('DSH_NODE_BASE_DIGEST is required')
+  const inventory = runtimeInventory({ base, app, nodeBaseDigest, removed })
+  if (JSON.stringify(inventory.packageCounts) !== JSON.stringify(split.packageCounts)) {
+    throw new Error('runtime package counts changed while inventory was written')
+  }
+  const inventoryPath = join(destination, 'runtime-inventory.json')
+  const temporaryInventory = `${inventoryPath}.tmp`
+  writeFileSync(temporaryInventory, `${JSON.stringify(inventory, null, 2)}\n`)
+  renameSync(temporaryInventory, inventoryPath)
 } finally {
   rmSync(consumer, { recursive: true, force: true })
 }

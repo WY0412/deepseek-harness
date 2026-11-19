@@ -1513,6 +1513,39 @@ describe('Documentation site publication', () => {
   })
 })
 
+describe('Harness runtime image publication', () => {
+  it('reuses only the exact content-addressed base and gates publication', () => {
+    const workflow = loadWorkflow('.github/workflows/image.yml')
+    const push = workflowJob(workflow, 'push')
+    if (!Array.isArray(push.steps)) throw new TypeError('Image workflow must define steps')
+    const steps = push.steps.filter(isRecord)
+    const commands = steps.flatMap(step => typeof step.run === 'string' ? [step.run] : [])
+    const source = commands.join('\n')
+
+    expect(source).toContain('runtime-base-${base_key}')
+    expect(source).toContain('manifest inspect')
+    expect(source).toContain('manifest unknown')
+    expect(source).toContain('node deploy/image-manifest.mjs diff')
+
+    const assemble = steps.find(step => step.name === 'Assemble runtime')
+    const probeIndex = steps.findIndex(step => step.name === 'Probe final runtime')
+    const gateIndex = steps.findIndex(step => step.name === 'Enforce final layer gate')
+    const pushIndex = steps.findIndex(step => step.name === 'Push final image')
+    const dispatchIndex = steps.findIndex(step => step.name === 'Trigger Pool image release')
+    expect(assemble).toMatchObject({ id: 'runtime' })
+    expect(probeIndex).toBeGreaterThanOrEqual(0)
+    expect(gateIndex).toBeGreaterThan(probeIndex)
+    expect(pushIndex).toBeGreaterThan(gateIndex)
+    expect(dispatchIndex).toBeGreaterThan(pushIndex)
+    expect(push.outputs).toMatchObject({
+      base_key: '${{ steps.runtime.outputs.base_key }}',
+      base_image: '${{ steps.base.outputs.image }}',
+      base_hit: '${{ steps.base.outputs.hit }}',
+      image_digest: '${{ steps.final_push.outputs.digest }}',
+    })
+  })
+})
+
 describe('Git hooks', () => {
   it('leaves frozen Agent Note sidecars to the archive verifier', () => {
     const lefthook = loadWorkflow('lefthook.yml')

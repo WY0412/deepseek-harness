@@ -1,6 +1,5 @@
-# Build this fork's dsh and push a runtime image. The pool image starts FROM
-# this image and adds the supervisor. A successful master image dispatches its
-# immutable SHA to WY0412/dsh-pool; manual runs on other refs do not deploy Pool.
+# Build this fork's dsh with a content-addressed dependency base. A successful
+# master image dispatches its immutable SHA to WY0412/dsh-pool.
 name: image
 
 on:
@@ -14,6 +13,7 @@ permissions:
 env:
   REGISTRY: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com
   IMAGE: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com/dsh_wy0412/dsh-harness
+  NODE_BASE_TAG: node:24.21.0-bookworm-slim
   PRIMARY_NODE_VERSION: '24'
   DSH_TELEMETRY_DISABLED: '1'
 
@@ -21,6 +21,11 @@ jobs:
   push:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    outputs:
+      base_key: ${{ steps.runtime.outputs.base_key }}
+      base_image: ${{ steps.base.outputs.image }}
+      base_hit: ${{ steps.base.outputs.hit }}
+      image_digest: ${{ steps.final_push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,8 +51,29 @@ jobs:
           mkdir -p dist/npm-landlock
           pnpm --dir native/system/packages/entry pack --pack-destination "$PWD/dist/npm-landlock"
 
+      - name: Resolve immutable Node base
+        id: node_base
+        run: |
+          set -euo pipefail
+          digest="$(docker buildx imagetools inspect "$NODE_BASE_TAG" | awk '/Digest:/ { print $2; exit }')"
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image=${NODE_BASE_TAG}@${digest}" >> "$GITHUB_OUTPUT"
+
       - name: Assemble runtime
-        run: node deploy/install-runtime.mjs deploy/image-root dist/npm dist/npm-vendor dist/npm-landlock
+        id: runtime
+        env:
+          DSH_NODE_BASE_DIGEST: ${{ steps.node_base.outputs.digest }}
+        run: |
+          set -euo pipefail
+          node deploy/install-runtime.mjs deploy/image-root dist/npm dist/npm-vendor dist/npm-landlock
+          inventory=deploy/image-root/runtime-inventory.json
+          test "$(jq -r .nodeBaseDigest "$inventory")" = "$DSH_NODE_BASE_DIGEST"
+          base_key="$(jq -r '.baseKey | sub("^sha256:"; "") | .[0:32]' "$inventory")"
+          echo "base_key=$base_key" >> "$GITHUB_OUTPUT"
+          echo "base_bytes=$(jq -r .base.bytes "$inventory")" >> "$GITHUB_OUTPUT"
+          echo "app_bytes=$(jq -r .app.bytes "$inventory")" >> "$GITHUB_OUTPUT"
+          echo "removed_bytes=$(jq -r .removed.bytes "$inventory")" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:
@@ -55,16 +81,73 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Place the runtime Dockerfile beside the install
-        run: cp deploy/Dockerfile deploy/image-root/Dockerfile
+      - name: Resolve dependency base
+        id: base
+        run: |
+          set -euo pipefail
+          base_key='${{ steps.runtime.outputs.base_key }}'
+          image="${IMAGE}:runtime-base-${base_key}"
+          error_file="$RUNNER_TEMP/base-manifest-error"
+          if docker manifest inspect "$image" > "$RUNNER_TEMP/base-manifest.json" 2> "$error_file"; then
+            hit=true
+          elif grep -Eqi 'manifest unknown|not found' "$error_file"; then
+            hit=false
+          else
+            cat "$error_file" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "hit=$hit" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/build-push-action@v6
+      - name: Build dependency base
+        if: steps.base.outputs.hit == 'false'
+        uses: docker/build-push-action@v6
         with:
           context: deploy/image-root
+          file: deploy/Dockerfile
+          target: runtime-base
+          push: true
+          tags: ${{ steps.base.outputs.image }}
+          build-args: NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
+
+      - name: Read dependency base manifest
+        run: docker manifest inspect '${{ steps.base.outputs.image }}' > "$RUNNER_TEMP/base-manifest.json"
+
+      - name: Build final image for validation
+        run: |
+          set -euo pipefail
+          docker run --detach --publish 5000:5000 --name dsh-validation-registry registry:2
+          docker buildx build \
+            --file deploy/Dockerfile \
+            --target final \
+            --build-arg 'DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}' \
+            --tag localhost:5000/dsh-harness:validation \
+            --push deploy/image-root
+          docker manifest inspect --insecure localhost:5000/dsh-harness:validation > "$RUNNER_TEMP/final-manifest.json"
+
+      - name: Probe final runtime
+        run: docker run --rm localhost:5000/dsh-harness:validation dsh --version
+
+      - name: Enforce final layer gate
+        id: layer_gate
+        run: |
+          node deploy/image-manifest.mjs diff \
+            "$RUNNER_TEMP/base-manifest.json" \
+            "$RUNNER_TEMP/final-manifest.json" | tee "$RUNNER_TEMP/layer-diff.json"
+          echo "maximum_layer_bytes=$(jq -r .maximumLayerBytes "$RUNNER_TEMP/layer-diff.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Push final image
+        id: final_push
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/image-root
+          file: deploy/Dockerfile
+          target: final
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:master
+          build-args: DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}
 
       - name: Trigger Pool image release
         if: github.ref == 'refs/heads/master'
@@ -72,44 +155,20 @@ jobs:
           DISPATCH_TOKEN: ${{ secrets.DSH_POOL_DISPATCH_TOKEN }}
         run: |
           set -euo pipefail
-          payload="$(jq -n \
-            --arg harness_sha "$GITHUB_SHA" \
-            --arg source_run_id "$GITHUB_RUN_ID" \
-            '{
-              event_type: "dsh-harness-image-published",
-              client_payload: {
-                harness_sha: $harness_sha,
-                source_repository: "WY0412/deepseek-harness",
-                source_run_id: $source_run_id
-              }
-            }')"
-          response_file="$RUNNER_TEMP/dsh-pool-dispatch-response.json"
-          http_status="$(curl \
-            --silent \
-            --show-error \
-            --retry 2 \
-            --retry-all-errors \
-            --output "$response_file" \
-            --write-out '%{http_code}' \
-            --request POST \
-            --header 'Accept: application/vnd.github+json' \
-            --header "Authorization: Bearer $DISPATCH_TOKEN" \
-            --header 'X-GitHub-Api-Version: 2026-03-10' \
-            --data "$payload" \
-            https://api.github.com/repos/WY0412/dsh-pool/dispatches)"
-          if [ "$http_status" != 204 ]; then
-            echo "::error::Pool dispatch failed with HTTP $http_status"
-            exit 1
-          fi
+          payload="$(jq -n --arg harness_sha "$GITHUB_SHA" --arg source_run_id "$GITHUB_RUN_ID" '{event_type:"dsh-harness-image-published",client_payload:{harness_sha:$harness_sha,source_repository:"WY0412/deepseek-harness",source_run_id:$source_run_id}}')"
+          status="$(curl --silent --show-error --retry 2 --retry-all-errors --output "$RUNNER_TEMP/dsh-pool-dispatch-response.json" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $DISPATCH_TOKEN" --header 'X-GitHub-Api-Version: 2026-03-10' --data "$payload" https://api.github.com/repos/WY0412/dsh-pool/dispatches)"
+          test "$status" = 204
 
-      - name: Summarize downstream trigger
-        if: github.ref == 'refs/heads/master'
+      - name: Summarize image publication
+        if: always()
         run: |
           {
-            echo '## Pool release trigger'
-            echo '- Target: `WY0412/dsh-pool`'
-            echo '- Event type: `dsh-harness-image-published`'
-            echo '- Harness SHA: `${{ github.sha }}`'
-            echo '- Source run ID: `${{ github.run_id }}`'
-            echo '- Result: repository dispatch accepted (HTTP 204)'
+            echo '## Harness runtime image'
+            echo '- Base key: `${{ steps.runtime.outputs.base_key }}`'
+            echo '- Base image: `${{ steps.base.outputs.image }}`'
+            echo '- Base cache hit: `${{ steps.base.outputs.hit }}`'
+            echo '- Base/app bytes: `${{ steps.runtime.outputs.base_bytes }}` / `${{ steps.runtime.outputs.app_bytes }}`'
+            echo '- Removed cache/source-map bytes: `${{ steps.runtime.outputs.removed_bytes }}`'
+            echo '- Maximum new layer bytes: `${{ steps.layer_gate.outputs.maximum_layer_bytes }}`'
+            echo '- Final digest: `${{ steps.final_push.outputs.digest }}`'
           } >> "$GITHUB_STEP_SUMMARY"
