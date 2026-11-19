@@ -1525,6 +1525,7 @@ describe('Harness runtime image publication', () => {
     expect(source).toContain('runtime-base-${base_key}')
     expect(source).toContain('manifest inspect')
     expect(source).toContain('manifest unknown')
+    expect(source).toContain('no such manifest')
     expect(source).toContain('node deploy/image-manifest.mjs diff')
     expect(source).toContain("--format '{{json .Manifest}}'")
     expect(source).toContain("jq -er '.digest'")

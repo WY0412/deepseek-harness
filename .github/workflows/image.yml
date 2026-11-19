@@ -91,7 +91,7 @@ jobs:
           error_file="$RUNNER_TEMP/base-manifest-error"
           if docker manifest inspect "$image" > "$RUNNER_TEMP/base-manifest.json" 2> "$error_file"; then
             hit=true
-          elif grep -Eqi 'manifest unknown|not found' "$error_file"; then
+          elif grep -Eqi 'manifest unknown|no such manifest|not found' "$error_file"; then
             hit=false
           else
             cat "$error_file" >&2
