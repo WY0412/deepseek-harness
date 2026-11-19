@@ -123,6 +123,7 @@ jobs:
           docker buildx build \
             --file deploy/Dockerfile \
             --target final \
+            --build-arg 'NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}' \
             --build-arg 'DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}' \
             --tag localhost:5000/dsh-harness:validation \
             --push deploy/image-root
@@ -150,7 +151,9 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:master
-          build-args: DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}
+          build-args: |
+            NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
+            DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}
 
       - name: Trigger Pool image release
         if: github.ref == 'refs/heads/master'

@@ -1533,6 +1533,8 @@ describe('Harness runtime image publication', () => {
 
     const assemble = steps.find(step => step.name === 'Assemble runtime')
     const baseBuild = steps.find(step => step.name === 'Build dependency base')
+    const validationBuild = steps.find(step => step.name === 'Build final image for validation')
+    const finalPush = steps.find(step => step.name === 'Push final image')
     const probeIndex = steps.findIndex(step => step.name === 'Probe final runtime')
     const gateIndex = steps.findIndex(step => step.name === 'Enforce final layer gate')
     const pushIndex = steps.findIndex(step => step.name === 'Push final image')
@@ -1541,6 +1543,12 @@ describe('Harness runtime image publication', () => {
     expect(baseBuild).toMatchObject({
       with: {
         'build-args': expect.stringContaining('DSH_RUNTIME_BASE_IMAGE=${{ steps.node_base.outputs.image }}'),
+      },
+    })
+    expect(validationBuild?.run).toContain("--build-arg 'NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}'")
+    expect(finalPush).toMatchObject({
+      with: {
+        'build-args': expect.stringContaining('NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}'),
       },
     })
     expect(probeIndex).toBeGreaterThanOrEqual(0)
