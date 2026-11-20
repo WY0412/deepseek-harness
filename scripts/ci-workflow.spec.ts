@@ -1516,6 +1516,10 @@ describe('Documentation site publication', () => {
 describe('Harness runtime image publication', () => {
   it('reuses only the exact content-addressed base and gates publication', () => {
     const workflow = loadWorkflow('.github/workflows/image.yml')
+    expect(workflow.env).toMatchObject({
+      NODE_BASE_TAG: 'node:24.21.0-bookworm-slim',
+      PRIMARY_NODE_VERSION: '24.21.0',
+    })
     const push = workflowJob(workflow, 'push')
     if (!Array.isArray(push.steps)) throw new TypeError('Image workflow must define steps')
     const steps = push.steps.filter(isRecord)
@@ -1529,6 +1533,10 @@ describe('Harness runtime image publication', () => {
     expect(source).toContain('node deploy/image-manifest.mjs diff')
     expect(source).toContain("--format '{{json .Manifest}}'")
     expect(source).toContain("jq -er '.digest'")
+    expect(source).toContain('jq -r .baseBytes')
+    expect(source).toContain('jq -r .appBytes')
+    expect(source).toContain('[.removed.cacheBytes, .removed.sourceMapBytes] | add')
+    expect(source).not.toContain('jq -r .base.bytes')
     expect(source).not.toMatch(/imagetools inspect[^\n]*\| awk/)
 
     const assemble = steps.find(step => step.name === 'Assemble runtime')

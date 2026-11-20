@@ -14,7 +14,7 @@ env:
   REGISTRY: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com
   IMAGE: crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com/dsh_wy0412/dsh-harness
   NODE_BASE_TAG: node:24.21.0-bookworm-slim
-  PRIMARY_NODE_VERSION: '24'
+  PRIMARY_NODE_VERSION: '24.21.0'
   DSH_TELEMETRY_DISABLED: '1'
 
 jobs:
@@ -72,9 +72,9 @@ jobs:
           test "$(jq -r .nodeBaseDigest "$inventory")" = "$DSH_NODE_BASE_DIGEST"
           base_key="$(jq -r '.baseKey | sub("^sha256:"; "") | .[0:32]' "$inventory")"
           echo "base_key=$base_key" >> "$GITHUB_OUTPUT"
-          echo "base_bytes=$(jq -r .base.bytes "$inventory")" >> "$GITHUB_OUTPUT"
-          echo "app_bytes=$(jq -r .app.bytes "$inventory")" >> "$GITHUB_OUTPUT"
-          echo "removed_bytes=$(jq -r .removed.bytes "$inventory")" >> "$GITHUB_OUTPUT"
+          echo "base_bytes=$(jq -r .baseBytes "$inventory")" >> "$GITHUB_OUTPUT"
+          echo "app_bytes=$(jq -r .appBytes "$inventory")" >> "$GITHUB_OUTPUT"
+          echo "removed_bytes=$(jq -r '[.removed.cacheBytes, .removed.sourceMapBytes] | add' "$inventory")" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v3
         with:
