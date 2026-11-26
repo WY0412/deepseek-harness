@@ -130,6 +130,8 @@ jobs:
       - name: Assemble incremental runtime
         if: inputs.mode != 'full'
         id: incremental
+        env:
+          DSH_NODE_BASE_DIGEST: ${{ steps.node_base.outputs.digest }}
         run: |
           set -euo pipefail
           baseline=deploy/runtime-base-baseline.json
