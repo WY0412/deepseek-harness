@@ -13,7 +13,7 @@ kind: "package-reference"
 
 ## 使用方式
 
-用 `baseUrl` 配置 MCP 服务来源地址。`timeoutMs` 默认 20 秒。持久 action 配置只接受 ACK 集群 id。取消和超时都会中止 HTTP 请求。
+用 `baseUrl` 配置 MCP 服务来源地址。`timeoutMs` 默认 20 秒。持久动作配置接受 ACK 集群 ID 和可选的 `notification_policy`。省略或设为 `changes` 时沿用 MCP 的变化通知规则。设为 `always` 时每次实际执行请求一次投递，包括首次基线、无变化和失败。取消会中止 HTTP 请求及后续投递。
 
 ## 模型体验
 

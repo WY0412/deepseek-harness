@@ -256,11 +256,15 @@ it('creates a cluster snapshot from a labelled inline card with structured time 
   expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('值班群')
   expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('wechat')
 
+  const policy = within(card).getByRole('combobox', { name: en['action.notificationPolicy'] })
+  expect(policy).toHaveProperty('value', 'changes')
+  fireEvent.change(policy, { target: { value: 'always' } })
   fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
   const create = vi.mocked(test.props.onCreateAction)
   await waitFor(() => { expect(create).toHaveBeenCalledOnce() })
   const request = create.mock.calls[0]![0]
   expect(request.provider).toBe('cluster-watch')
+  expect(request.notifyEveryRun).toBe(true)
   expect(request.clusterId).toBe(`c${'a'.repeat(32)}`)
   expect(request.destination).toEqual({ provider: 'dsh-im', id: 'opaque', label: '值班群', kind: 'group' })
   expect(request.time).toBe('10:30:00')

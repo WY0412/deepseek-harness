@@ -185,7 +185,7 @@ export function apply(ctx: ClientContext): void {
         let actionConfig = {}
         if (input.provider === 'cluster-watch') {
           if (input.clusterId === undefined) throw new Error('A cluster id is required for cluster-watch automation.')
-          actionConfig = { cluster_id: input.clusterId }
+          actionConfig = { cluster_id: input.clusterId, ...(input.notifyEveryRun ? { notification_policy: 'always' } : {}) }
         }
         const result = await ctx.remote.schedule.createAction(sessionId, {
           title: input.provider === 'cluster-watch' ? 'ACK 集群定时快照' : 'DSH 错误预算',

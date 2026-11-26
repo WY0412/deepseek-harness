@@ -22,6 +22,8 @@ export type DestinationDirectoryStatus = 'idle' | 'loading' | 'ready' | 'error'
 export interface ActionCreateCardProps {
   readonly kind: ActionKind
   readonly clusterId: string
+  readonly notifyEveryRun: boolean
+  readonly onNotifyEveryRunChange: (value: boolean) => void
   readonly time: string
   readonly destinations: readonly Destination[]
   readonly directoryStatus: DestinationDirectoryStatus
@@ -51,7 +53,7 @@ function DestinationLabel({ destination }: { readonly destination: Destination }
 /** Render the labelled, responsive form without owning remote calls. */
 export function ActionCreateCard(props: ActionCreateCardProps) {
   const {
-    kind, clusterId, time, destinations, directoryStatus, destinationId, creating, createError,
+    kind, clusterId, notifyEveryRun, onNotifyEveryRunChange, time, destinations, directoryStatus, destinationId, creating, createError,
     onClusterIdChange, onTimeChange, onDestinationChange, onRetryDestinations, onSubmit, onCancel, t,
   } = props
   const [timeOpen, setTimeOpen] = useState(false)
@@ -97,6 +99,14 @@ export function ActionCreateCard(props: ActionCreateCardProps) {
               onChange={(event) => { onClusterIdChange(event.target.value) }}
             />
           </span>
+        </label>}
+        {kind === 'cluster-watch' && <label className={css.field}>
+          <span className={css.fieldLabel}>{t('action.notificationPolicy')}</span>
+          <select value={notifyEveryRun ? 'always' : 'changes'} disabled={creating}
+            onChange={event => onNotifyEveryRunChange(event.target.value === 'always')}>
+            <option value="changes">{t('action.notifyChanges')}</option>
+            <option value="always">{t('action.notifyAlways')}</option>
+          </select>
         </label>}
 
         <div className={css.field} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {

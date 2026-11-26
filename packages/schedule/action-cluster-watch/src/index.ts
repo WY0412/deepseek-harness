@@ -7,6 +7,11 @@ const response = z.object({
   summary: z.string().max(500), message: z.string().min(1).max(2000).nullable().optional(),
 }).passthrough()
 
+const taskConfig = z.object({
+  cluster_id: z.string().regex(/^c[a-z0-9]{32}$/u),
+  notification_policy: z.enum(['changes', 'always']).optional(),
+}).strict()
+
 /** Provider configuration. */
 export interface Config {
   /** Origin of the lease-authenticated MCP internal HTTP service. */
@@ -23,9 +28,10 @@ export function apply(ctx: Context, config: Config): void {
   const baseUrl = config.baseUrl.replace(/\/$/u, '')
   ctx.effect(() => ctx.scheduleActions.register({
     id: 'cluster-watch', title: 'ACK cluster watch',
-    config: z.object({ cluster_id: z.string().regex(/^c[a-z0-9]{32}$/u) }).strict(),
+    config: taskConfig,
     async execute(request): Promise<ScheduleActionResult> {
-      const actionConfig = z.object({ cluster_id: z.string().regex(/^c[a-z0-9]{32}$/u) }).strict().parse(request.config)
+      const actionConfig = taskConfig.parse(request.config)
+      const always = actionConfig.notification_policy === 'always'
       const controller = new AbortController()
       const timer = setTimeout(
         () => controller.abort(new Error('cluster watch action timeout')),
@@ -46,10 +52,16 @@ export function apply(ctx: Context, config: Config): void {
         return {
           outcome: parsed.outcome,
           code: parsed.code,
-          notify: parsed.notify,
+          notify: parsed.notify || always,
           summary: parsed.summary,
-          ...(parsed.message == null ? {} : { message: parsed.message }),
+          ...(parsed.message != null ? { message: parsed.message } : always
+            ? { message: `ACK 集群定时快照（${actionConfig.cluster_id}）\n${parsed.code}：${parsed.summary || '无摘要'}` }
+            : {}),
         }
+      } catch (error) {
+        if (!always || request.signal.aborted) throw error
+        const summary = 'ACK 集群定时快照执行失败，请查看任务运行记录。'
+        return { outcome: 'failed', code: 'action_failed', notify: true, summary, message: summary }
       } finally { clearTimeout(timer) }
     },
   }))

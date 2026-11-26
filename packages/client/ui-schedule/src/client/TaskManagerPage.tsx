@@ -29,6 +29,7 @@ export interface TaskManagerInjected extends Omit<TaskDetailInjected, 'hooks'> {
   readonly onCreateAction: (input: {
     readonly provider: 'cluster-watch' | 'error-budget'
     readonly clusterId?: string
+    readonly notifyEveryRun?: boolean
     readonly destination: ScheduleDestinationRef
     readonly time: string
     readonly timeZone: string
@@ -59,6 +60,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
   const [automationOptions, setAutomationOptions] = useState<ScheduleAutomationOptions | null>(null)
   const [destinationId, setDestinationId] = useState('')
   const [clusterId, setClusterId] = useState('')
+  const [notifyEveryRun, setNotifyEveryRun] = useState(false)
   const [actionTime, setActionTime] = useState('09:00:00')
   const [creatingAction, setCreatingAction] = useState(false)
   const [directoryStatus, setDirectoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -134,6 +136,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
     createGeneration.current += 1
     if (kind === 'error-budget') setClusterId('')
     setActionKind(kind)
+    setNotifyEveryRun(false)
     setCreateError(false)
     loadDestinations()
   }
@@ -183,6 +186,8 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
             {actionKind !== null && <ActionCreateCard
               kind={actionKind}
               clusterId={clusterId}
+              notifyEveryRun={notifyEveryRun}
+              onNotifyEveryRunChange={setNotifyEveryRun}
               time={actionTime}
               destinations={automationOptions?.destinations ?? []}
               directoryStatus={directoryStatus}
@@ -201,6 +206,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
                 void onCreateAction({
                   provider: actionKind,
                   ...(actionKind === 'cluster-watch' ? { clusterId } : {}),
+                  ...(actionKind === 'cluster-watch' && notifyEveryRun ? { notifyEveryRun: true } : {}),
                   destination,
                   time: actionTime,
                   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,

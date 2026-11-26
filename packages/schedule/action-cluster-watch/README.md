@@ -13,7 +13,7 @@ This Host plugin registers `cluster-watch`. Each admitted occurrence posts the s
 
 ## Use this package
 
-Configure `baseUrl` with the MCP service origin. `timeoutMs` defaults to 20 seconds. The durable action config accepts only an ACK cluster id. Cancellation and timeout abort the HTTP request.
+Configure `baseUrl` with the MCP service origin. `timeoutMs` defaults to 20 seconds. The durable action config accepts an ACK cluster id and optional `notification_policy`. Missing or `changes` follows the MCP change policy. `always` requests one notification per executed occurrence, including baseline, unchanged, and failed results. Cancellation aborts the HTTP request and stops delivery.
 
 ## Model Experience
 
