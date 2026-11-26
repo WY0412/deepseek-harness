@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pruneRuntime, runtimeInventory, splitRuntime } from './runtime-layout.mjs'
+import { stageRuntimeDelta } from './runtime-delta.mjs'
 import { assertRuntimeNpmVersion, collectRuntimeTarballs, prepareRuntimeConsumer } from './runtime-lock.mjs'
 
 const GNU_ADDON = 'node-addon-require-builtin-linux-x64-gnu'
@@ -145,6 +146,11 @@ try {
   const nodeBaseDigest = process.env.DSH_NODE_BASE_DIGEST
   if (nodeBaseDigest === undefined) throw new Error('DSH_NODE_BASE_DIGEST is required')
   const inventory = runtimeInventory({ base, app, nodeBaseDigest, removed })
+  if (process.env.DSH_RUNTIME_BASELINE_DIR !== undefined) {
+    const output = join(destination, 'extension', 'node_modules')
+    mkdirSync(join(destination, 'extension'))
+    inventory.extension = stageRuntimeDelta({ baseline: process.env.DSH_RUNTIME_BASELINE_DIR, target: base, app, output })
+  }
   if (JSON.stringify(inventory.packageCounts) !== JSON.stringify(split.packageCounts)) {
     throw new Error('runtime package counts changed while inventory was written')
   }

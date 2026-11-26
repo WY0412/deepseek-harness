@@ -1,0 +1,6 @@
+{
+  "image": "crpi-iyy18ciavhso23tw.cn-hangzhou.personal.cr.aliyuncs.com/dsh_wy0412/dsh-harness@sha256:e91a3d94d174aec3855afd2452362af09f2ea463936991918580c2a40adcbdcf",
+  "platform": "linux/amd64",
+  "nodeBaseDigest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+  "lockCommit": "a8dc7f6845c7c5dddb50a27d24345b97f8a32e7e"
+}

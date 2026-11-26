@@ -91,3 +91,13 @@ test('runtime assembly pins the npm implementation that materializes the lock', 
   assert.doesNotThrow(() => assertRuntimeNpmVersion('11.19.0'))
   assert.throws(() => assertRuntimeNpmVersion('11.20.0'), /requires npm 11\.19\.0/u)
 })
+test('incremental lock preserves existing registry paths and accepts a nested addition', async () => {
+  const { assertPreservedRuntimeLock } = await import('./runtime-lock.mjs')
+  const old = { version: '1.0.0', resolved: 'https://registry.npmjs.org/old/-/old-1.0.0.tgz', integrity: 'sha512-old' }
+  const seed = { packages: { '': {}, 'node_modules/old': old } }
+  const candidate = { packages: { ...seed.packages, 'node_modules/new/node_modules/old': { version: '2.0.0' } } }
+  assert.doesNotThrow(() => assertPreservedRuntimeLock(seed, candidate))
+  assert.throws(() => assertPreservedRuntimeLock(seed, { packages: { '': {} } }), /node_modules\/old/)
+  candidate.packages['node_modules/old'] = { ...old, version: '2.0.0' }
+  assert.throws(() => assertPreservedRuntimeLock(seed, candidate), /node_modules\/old/)
+})

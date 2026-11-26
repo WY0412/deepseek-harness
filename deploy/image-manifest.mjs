@@ -3,6 +3,15 @@ import { pathToFileURL } from 'node:url'
 
 export const MAXIMUM_LAYER_BYTES = 300 * 1024 * 1024
 
+export function assertBasePrefix(baseManifest, finalManifest) {
+  const candidate = layers(finalManifest)
+  for (const [index, layer] of layers(baseManifest).entries()) {
+    if (candidate[index]?.digest !== layer.digest || candidate[index].size !== layer.size) {
+      throw new Error(`candidate does not preserve baseline layer ${index}: ${layer.digest}`)
+    }
+  }
+}
+
 export function diffManifests(baseManifest, finalManifest) {
   const baseDigests = new Set(layers(baseManifest).map(layer => layer.digest))
   const newLayers = []
@@ -35,10 +44,13 @@ function layers(manifest) {
 
 function main(argv) {
   const [command, basePath, finalPath] = argv
-  if (command !== 'diff' || basePath === undefined || finalPath === undefined) {
-    throw new Error('Usage: image-manifest.mjs diff <base-manifest-json> <final-manifest-json>')
+  if (!['diff', 'verify'].includes(command) || basePath === undefined || finalPath === undefined) {
+    throw new Error('Usage: image-manifest.mjs <diff|verify> <base-manifest-json> <final-manifest-json>')
   }
-  const result = diffManifests(readJson(basePath), readJson(finalPath))
+  const base = readJson(basePath)
+  const final = readJson(finalPath)
+  if (command === 'verify') assertBasePrefix(base, final)
+  const result = diffManifests(base, final)
   process.stdout.write(`${JSON.stringify(result)}\n`)
   if (result.maximumLayerBytes > MAXIMUM_LAYER_BYTES) {
     process.stderr.write(`Largest new layer ${result.maximumLayerBytes} exceeds ${MAXIMUM_LAYER_BYTES} bytes\n`)

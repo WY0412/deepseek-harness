@@ -16,3 +16,11 @@ COPY app/node_modules /opt/dsh/node_modules
 ENV PATH="/opt/dsh/node_modules/.bin:${PATH}"
 
 RUN dsh --version
+
+FROM ${DSH_RUNTIME_BASE_IMAGE} AS incremental
+
+COPY extension/node_modules /opt/dsh/node_modules
+COPY app/node_modules /opt/dsh/node_modules
+ENV PATH="/opt/dsh/node_modules/.bin:${PATH}"
+
+RUN dsh --version

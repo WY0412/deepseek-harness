@@ -38,3 +38,11 @@ test('diff command fails when a new layer exceeds 300 MiB', () => {
   assert.match(result.stdout, /"maximumLayerBytes":314572801/)
   assert.match(result.stderr, /exceeds 314572800 bytes/)
 })
+test('rejects a candidate missing or reordering a baseline layer', async () => {
+  const { assertBasePrefix } = await import('./image-manifest.mjs')
+  const a = { digest: 'sha256:a', size: 1 }
+  const b = { digest: 'sha256:b', size: 2 }
+  assert.doesNotThrow(() => assertBasePrefix({ layers: [a] }, { layers: [a, b] }))
+  assert.throws(() => assertBasePrefix({ layers: [a] }, { layers: [b, a] }), /baseline/)
+  assert.throws(() => assertBasePrefix({ layers: [a] }, { layers: [] }), /baseline/)
+})

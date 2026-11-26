@@ -98,7 +98,17 @@ export function prepareRuntimeConsumer({ consumer, tarballs, lockPath }) {
   return manifest
 }
 
-function refreshLock(output, directories) {
+export function assertPreservedRuntimeLock(seed, candidate) {
+  for (const [path, old] of Object.entries(seed.packages)) {
+    if (path === '' || old.resolved?.startsWith('file:tarballs/')) continue
+    const current = candidate.packages[path]
+    if (current === undefined || ['version', 'resolved', 'integrity'].some(key => current[key] !== old[key])) {
+      throw new Error(`runtime lock changed baseline dependency: ${path}`)
+    }
+  }
+}
+
+function refreshLock(output, directories, seedPath) {
   const consumer = mkdtempSync(join(tmpdir(), 'dsh-runtime-lock-'))
   try {
     assertRuntimeNpmVersion(execFileSync('npm', ['--version'], { encoding: 'utf8' }))
@@ -108,11 +118,30 @@ function refreshLock(output, directories) {
     mkdirSync(tarballRoot, { recursive: true })
     for (const { filename, source } of tarballs) copyFileSync(source, join(tarballRoot, filename))
     writeFileSync(join(consumer, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    const seed = seedPath === undefined ? undefined : JSON.parse(readFileSync(seedPath, 'utf8'))
+    if (seed !== undefined) {
+      const working = structuredClone(seed)
+      for (const { name, manifest: packed } of tarballs) {
+        const key = `node_modules/${name}`
+        const entry = working.packages[key]
+        if (entry === undefined) continue
+        if (JSON.stringify(lockedManifest(entry)) !== JSON.stringify(lockedManifest(packed))) {
+          delete working.packages[key]
+        } else {
+          delete entry.integrity
+        }
+      }
+      writeFileSync(join(consumer, 'package-lock.json'), JSON.stringify(working))
+    }
     execFileSync('npm', [
       'install', '--package-lock-only', '--lockfile-version=3', '--ignore-scripts', '--no-audit', '--no-fund',
       '--cache', join(consumer, '.npm-cache'),
     ], { cwd: consumer, stdio: 'inherit' })
-    copyFileSync(join(consumer, 'package-lock.json'), output)
+    const generated = join(consumer, 'package-lock.json')
+    const candidate = JSON.parse(readFileSync(generated, 'utf8'))
+    validateRuntimeLock(candidate, manifest, tarballs)
+    if (seed !== undefined) assertPreservedRuntimeLock(seed, candidate)
+    copyFileSync(generated, output)
   } finally {
     rmSync(consumer, { recursive: true, force: true })
   }
@@ -122,5 +151,5 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
   if (process.argv[2] !== '--write' || process.argv.length < 5) {
     throw new Error(`usage: ${basename(process.argv[1])} --write <lock path> <tarball directory>...`)
   }
-  refreshLock(resolve(process.argv[3]), process.argv.slice(4).map(directory => resolve(directory)))
+  refreshLock(resolve(process.argv[3]), process.argv.slice(4).map(directory => resolve(directory)), process.env.DSH_RUNTIME_LOCK_SEED)
 }

@@ -6,6 +6,18 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Runtime image release mode
+        type: choice
+        options:
+          - incremental
+          - full
+        default: incremental
+
+concurrency:
+  group: harness-runtime-publication
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -62,6 +74,7 @@ jobs:
           echo "image=${NODE_BASE_TAG}@${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Assemble runtime
+        if: inputs.mode == 'full'
         id: runtime
         env:
           DSH_NODE_BASE_DIGEST: ${{ steps.node_base.outputs.digest }}
@@ -83,6 +96,7 @@ jobs:
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Resolve dependency base
+        if: inputs.mode == 'full'
         id: base
         run: |
           set -euo pipefail
@@ -101,7 +115,7 @@ jobs:
           echo "hit=$hit" >> "$GITHUB_OUTPUT"
 
       - name: Build dependency base
-        if: steps.base.outputs.hit == 'false'
+        if: inputs.mode == 'full' && steps.base.outputs.hit == 'false'
         uses: docker/build-push-action@v6
         with:
           context: deploy/image-root
@@ -113,8 +127,36 @@ jobs:
             NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
             DSH_RUNTIME_BASE_IMAGE=${{ steps.node_base.outputs.image }}
 
+      - name: Assemble incremental runtime
+        if: inputs.mode != 'full'
+        id: incremental
+        run: |
+          set -euo pipefail
+          baseline=deploy/runtime-base-baseline.json
+          image="$(jq -er .image "$baseline")"
+          platform="$(jq -er .platform "$baseline")"
+          test "$platform" = linux/amd64
+          test "$(jq -er .nodeBaseDigest "$baseline")" = "$DSH_NODE_BASE_DIGEST"
+          [[ "$image" =~ ^${IMAGE}@sha256:[a-f0-9]{64}$ ]]
+          docker pull --platform "$platform" "$image"
+          test "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")" = "$platform"
+          container="$(docker create --platform "$platform" "$image")"
+          trap 'docker rm "$container" >/dev/null' EXIT
+          mkdir "$RUNNER_TEMP/dsh-baseline"
+          docker cp "$container:/opt/dsh/node_modules/." "$RUNNER_TEMP/dsh-baseline"
+          DSH_RUNTIME_BASELINE_DIR="$RUNNER_TEMP/dsh-baseline" node deploy/install-runtime.mjs deploy/image-root dist/npm dist/npm-vendor dist/npm-landlock
+          target=incremental
+          if test "$(jq '.extension.addedPackages | length' deploy/image-root/runtime-inventory.json)" = 0; then
+            target=final
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          jq '{nodeBaseDigest, extension, appBytes}' deploy/image-root/runtime-inventory.json
+
       - name: Read dependency base manifest
-        run: docker manifest inspect '${{ steps.base.outputs.image }}' > "$RUNNER_TEMP/base-manifest.json"
+        env:
+          BASE_IMAGE: ${{ steps.incremental.outputs.image || steps.base.outputs.image }}
+        run: docker buildx imagetools inspect --raw "$BASE_IMAGE" > "$RUNNER_TEMP/base-manifest.json"
 
       - name: Build final image for validation
         run: |
@@ -122,38 +164,47 @@ jobs:
           docker run --detach --publish 5000:5000 --name dsh-validation-registry registry:2
           docker buildx build \
             --file deploy/Dockerfile \
-            --target final \
+            --platform linux/amd64 \
+            --provenance=false \
+            --target '${{ steps.incremental.outputs.target || 'final' }}' \
             --build-arg 'NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}' \
-            --build-arg 'DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}' \
+            --build-arg 'DSH_RUNTIME_BASE_IMAGE=${{ steps.incremental.outputs.image || steps.base.outputs.image }}' \
             --tag localhost:5000/dsh-harness:validation \
             --push deploy/image-root
-          docker manifest inspect --insecure localhost:5000/dsh-harness:validation > "$RUNNER_TEMP/final-manifest.json"
+          curl --fail --silent --show-error \
+            -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            http://localhost:5000/v2/dsh-harness/manifests/validation > "$RUNNER_TEMP/final-manifest.json"
 
       - name: Probe final runtime
-        run: docker run --rm localhost:5000/dsh-harness:validation dsh --version
+        run: |
+          docker run --rm localhost:5000/dsh-harness:validation dsh --version
+          docker run --rm --workdir /opt/dsh localhost:5000/dsh-harness:validation \
+            node --input-type=module -e "await import('@deepseek-ai/dsh-trace')"
 
       - name: Enforce final layer gate
         id: layer_gate
         run: |
-          node deploy/image-manifest.mjs diff \
+          node deploy/image-manifest.mjs verify \
             "$RUNNER_TEMP/base-manifest.json" \
             "$RUNNER_TEMP/final-manifest.json" | tee "$RUNNER_TEMP/layer-diff.json"
           echo "maximum_layer_bytes=$(jq -r .maximumLayerBytes "$RUNNER_TEMP/layer-diff.json")" >> "$GITHUB_OUTPUT"
 
       - name: Push final image
         id: final_push
-        uses: docker/build-push-action@v6
-        with:
-          context: deploy/image-root
-          file: deploy/Dockerfile
-          target: final
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:master
-          build-args: |
-            NODE_BASE_IMAGE=${{ steps.node_base.outputs.image }}
-            DSH_RUNTIME_BASE_IMAGE=${{ steps.base.outputs.image }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y skopeo
+          current="$(git ls-remote origin refs/heads/master | cut -f1)"
+          test "$GITHUB_REF" = refs/heads/master
+          test "$current" = "$GITHUB_SHA"
+          for tag in "$GITHUB_SHA" master; do
+            skopeo copy --authfile "${DOCKER_CONFIG:-$HOME/.docker}/config.json" --src-tls-verify=false --preserve-digests \
+              docker://localhost:5000/dsh-harness:validation "docker://$IMAGE:$tag"
+            docker buildx imagetools inspect --raw "$IMAGE:$tag" > "$RUNNER_TEMP/published-manifest.json"
+            cmp "$RUNNER_TEMP/final-manifest.json" "$RUNNER_TEMP/published-manifest.json"
+          done
+          echo "digest=sha256:$(sha256sum "$RUNNER_TEMP/final-manifest.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Trigger Pool image release
         if: github.ref == 'refs/heads/master'
@@ -162,6 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           payload="$(jq -n --arg harness_sha "$GITHUB_SHA" --arg source_run_id "$GITHUB_RUN_ID" '{event_type:"dsh-harness-image-published",client_payload:{harness_sha:$harness_sha,source_repository:"WY0412/deepseek-harness",source_run_id:$source_run_id}}')"
+          test "$(git ls-remote origin refs/heads/master | cut -f1)" = "$GITHUB_SHA"
           status="$(curl --silent --show-error --retry 2 --retry-all-errors --output "$RUNNER_TEMP/dsh-pool-dispatch-response.json" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $DISPATCH_TOKEN" --header 'X-GitHub-Api-Version: 2026-03-10' --data "$payload" https://api.github.com/repos/WY0412/dsh-pool/dispatches)"
           test "$status" = 204
 
@@ -171,7 +223,8 @@ jobs:
           {
             echo '## Harness runtime image'
             echo '- Base key: `${{ steps.runtime.outputs.base_key }}`'
-            echo '- Base image: `${{ steps.base.outputs.image }}`'
+            echo '- Base image: `${{ steps.incremental.outputs.image || steps.base.outputs.image }}`'
+            echo '- Release mode: `${{ inputs.mode || 'incremental' }}`'
             echo '- Base cache hit: `${{ steps.base.outputs.hit }}`'
             echo '- Base/app bytes: `${{ steps.runtime.outputs.base_bytes }}` / `${{ steps.runtime.outputs.app_bytes }}`'
             echo '- Removed cache/source-map bytes: `${{ steps.runtime.outputs.removed_bytes }}`'
