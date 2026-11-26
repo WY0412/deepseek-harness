@@ -15,6 +15,8 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as retry from '../src/index.ts'
+import { applyTracing } from '../../../telemetry/trace/src/plugin.ts'
+import { createTraceRuntime } from '../../../telemetry/trace/src/runtime.ts'
 
 let root: string | undefined
 let context: Context | undefined
@@ -105,6 +107,20 @@ describe('real Loader composition', () => {
     expect(unloaded).toEqual([])
     expect(loaded.agents).toBeInstanceOf(AgentRegistry)
 
+    const finishedSpans: Array<{ name: string; attributes: Readonly<Record<string, unknown>> }> = []
+    const exporter = {
+      export(spans: typeof finishedSpans, done: (result: { code: number }) => void) {
+        finishedSpans.push(...spans)
+        done({ code: 0 })
+      },
+      shutdown: async () => {},
+    }
+    const traceRuntime = createTraceRuntime({ enabled: true, serviceName: 'retry-composition-test' }, {
+      exporter: exporter as never,
+      registerGlobal: false,
+    })
+    applyTracing(loaded, traceRuntime)
+
     const adapter = new TransientOnceAdapter()
     loaded.llm.registerAdapter(['mock'], adapter)
     const agent = await loaded.agentLoop.create(SessionId('loader-retry'), { provider: 'mock', model: 'mock' })
@@ -117,5 +133,11 @@ describe('real Loader composition', () => {
       role: 'assistant',
       content: [{ type: 'text', text: 'recovered' }],
     })
+    await traceRuntime.forceFlush()
+    expect(finishedSpans
+      .filter(span => span.name === 'dsh.model.request')
+      .map(span => span.attributes['dsh.retry.attempt']))
+      .toEqual([0, 1])
+    await traceRuntime.shutdown()
   })
 })

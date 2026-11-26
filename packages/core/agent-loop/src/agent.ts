@@ -305,6 +305,12 @@ export class ReactLoopAgent implements Agent {
     const { signal } = phase.abort
     signal.throwIfAborted()
     const turn = phase.turn + 1
+    return this.dispatch.waterfall('agent/turn', { turn, signal }, () => this.runTurn(phase, turn))
+  }
+
+  /** Execute the durable body owned by one `agent/turn` waterfall. */
+  private async runTurn(phase: Extract<Phase, { kind: 'running' }>, turn: number): Promise<boolean> {
+    const { signal } = phase.abort
     try {
       this.session.append('turn/start', { turn })
       this.sloId = sloTurnOpen()

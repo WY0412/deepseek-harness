@@ -279,6 +279,17 @@ declare module '@deepseek-ai/cordis' {
      */
     'agent/status'(this: Scoped<Agent>, payload: { agent: Agent; status: AgentStatus }): void
     /**
+     * Wrap one complete durable turn, from before `turn/start` is appended
+     * until after the matching `turn/end` append has settled.
+     * @param payload.agent - the agent executing the turn.
+     * @param payload.turn - the one-based durable turn number being opened.
+     * @param payload.signal - cancellation signal owned by this turn.
+     * @param next - continue the turn and resolve whether the driver should open another turn.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+     * @mode waterfall
+     */
+    'agent/turn'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; signal: AbortSignal }, next: () => Promise<boolean>): Promise<boolean>
+    /**
      * One message entered the live inbox.
      * @param payload.agent - the agent whose inbox changed.
      * @param payload.message - the inserted message.

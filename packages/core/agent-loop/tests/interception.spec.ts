@@ -72,6 +72,35 @@ function events(agent: Agent): readonly SessionEvent[] {
   return agent.session.snapshotEvents()
 }
 
+describe('agent/turn', () => {
+  it('wraps the complete durable turn boundary', async () => {
+    const adapter = new MockAdapter([textResponse('ok')])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('turn-waterfall'), { provider: 'mock', model: 'mock' })
+    const order: string[] = []
+
+    ctx.on('agent/turn', async ({ agent: subject, turn, signal }, next) => {
+      expect(subject).toBe(agent)
+      expect(turn).toBe(1)
+      expect(signal.aborted).toBe(false)
+      order.push('waterfall/before')
+      const result = await next()
+      order.push('waterfall/after')
+      return result
+    })
+    ctx.on('session/event', (session, event) => {
+      if (session === agent.session && (event.type === 'turn/start' || event.type === 'turn/end')) {
+        order.push(event.type)
+      }
+    })
+
+    send(agent, 'hello')
+    await waitForIdle(ctx, agent)
+
+    expect(order).toEqual(['waterfall/before', 'turn/start', 'turn/end', 'waterfall/after'])
+  })
+})
+
 describe('agent/pre-step', () => {
   it('enter (default via next) records the user/message unchanged', async () => {
     const adapter = new MockAdapter([textResponse('ok')])

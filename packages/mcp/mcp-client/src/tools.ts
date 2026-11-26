@@ -23,6 +23,7 @@ import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepse
 import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { callMcpWithTrace, type TraceRuntime } from '@deepseek-ai/dsh-trace'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
@@ -30,6 +31,8 @@ export interface ToolBridgeOptions {
   registrationFailure: 'contain' | 'throw'
   serverName: string
   toolCallTimeoutMs: number
+  /** Optional tracing runtime owned by the process-level trace plugin. */
+  traceRuntime?: TraceRuntime
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
@@ -135,10 +138,13 @@ export async function syncTools(
       inputSchema: tool.inputSchema,
       outputSchema: tool.outputSchema,
       taskRequired: tool.execution?.taskSupport === 'required',
-      call: (args, execution) => client.callTool(
-        { name: tool.name, arguments: args },
+      call: (args, execution) => callMcpWithTrace(opts.traceRuntime, {
+        serverName: opts.serverName,
+        toolName: tool.name,
+      }, meta => client.callTool(
+        { name: tool.name, arguments: args, ...Object.keys(meta).length === 0 ? {} : { _meta: meta } },
         { signal: execution.signal, timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
-      ),
+      )),
     }))
   }
 

@@ -197,6 +197,18 @@
     - id: otel
       name: '@deepseek-ai/dsh-otel'
 
+    # Content-safe distributed tracing is independent from Session-log
+    # telemetry. It remains dormant unless production explicitly opts in.
+    - id: trace
+      name: '@deepseek-ai/dsh-trace'
+      disabled: !!js process.env.DSH_TRACE_ENABLED !== '1'
+      config:
+        enabled: true
+        endpoint: !!js process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? ''
+        headers: !!js process.env.OTEL_EXPORTER_OTLP_HEADERS ?? ''
+        serviceName: !!js process.env.OTEL_SERVICE_NAME ?? 'dsh-harness'
+        resourceAttributes: !!js "Object.fromEntries((process.env.OTEL_RESOURCE_ATTRIBUTES ?? '').split(',').map(item => item.split('=', 2)).filter(([key, value]) => key && value))"
+
     # OTel releases a Session-log prefix only after explicit user feedback,
     # regardless of model provider. Ordinary activity never triggers capture.
     # DSH_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
