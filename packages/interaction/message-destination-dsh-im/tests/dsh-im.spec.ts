@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { Context, Service } from '@deepseek-ai/cordis'
 import MessageDestinationService from '@deepseek-ai/dsh-message-destination'
 import { describe, expect, it, vi } from 'vitest'
@@ -21,7 +22,7 @@ function fakeIm(overrides: Partial<DshImService> = {}): DshImService {
   }
 }
 
-async function mounted(im: DshImService, timeoutMs = 5_000): Promise<Context> {
+async function mounted(im: DshImService, timeoutMs = 5_000, loadAdapter?: (ctx: Context) => boolean): Promise<Context> {
   const ctx = new Context()
   class FakeDshIm extends Service implements DshImService {
     constructor(inner: Context) { super(inner, 'dshIm') }
@@ -29,13 +30,30 @@ async function mounted(im: DshImService, timeoutMs = 5_000): Promise<Context> {
     listTargets = im.listTargets
     send = im.send
   }
-  await ctx.plugin(FakeDshIm)
   await ctx.plugin(MessageDestinationService)
-  await ctx.plugin(DshImDestinationProvider, { timeoutMs })
+  if (loadAdapter === undefined) {
+    await ctx.plugin(FakeDshIm)
+    await ctx.plugin(DshImDestinationProvider, { timeoutMs })
+  } else {
+    if (loadAdapter(ctx)) ctx.plugin(DshImDestinationProvider, { timeoutMs })
+    await ctx.plugin(FakeDshIm)
+  }
   return ctx
 }
 
 describe('DSH-IM destination adapter', () => {
+  it('lists WeChat targets when the web profile installs DSH-IM after the adapter', async () => {
+    const patch = readFileSync(new URL('../../../bundle/web-app/cordis.patch.yml', import.meta.url), 'utf8')
+    const expression = /id: message-destination-dsh-im\s+name: [^\n]+\s+disabled: !!js ([^\n]+)/u.exec(patch)?.[1]
+    if (expression === undefined) throw new Error('destination adapter entry missing')
+    const condition = expression.startsWith('"') ? JSON.parse(expression) : expression
+    const shouldDisable = new Function('ctx', 'process', `return (${condition})`)
+    const ctx = await mounted(fakeIm(), 5_000, inner =>
+      !shouldDisable(inner, { env: { DSH_SCHEDULE_ACTIONS_ENABLED: '1' } }))
+    await expect(ctx.messageDestinations.list(abortSignal())).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ channel: 'wechat' }),
+    ]))
+  })
   it('enumerates stable versioned hashes independent of bot and target ordering', async () => {
     const firstIm = fakeIm()
     const secondIm = fakeIm({

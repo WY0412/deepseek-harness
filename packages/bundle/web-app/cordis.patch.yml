@@ -149,7 +149,7 @@
 
     - id: message-destination-dsh-im
       name: '@deepseek-ai/dsh-message-destination-dsh-im'
-      disabled: !!js "process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1' || !ctx.get('dshIm')"
+      disabled: !!js process.env.DSH_SCHEDULE_ACTIONS_ENABLED !== '1'
 
     - id: schedule-action-cluster-watch
       name: '@deepseek-ai/dsh-action-cluster-watch'
