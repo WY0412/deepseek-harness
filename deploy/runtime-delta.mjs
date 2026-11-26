@@ -18,6 +18,8 @@ function scan(root) {
       const key = prefix + name
       const path = join(directory, name)
       const info = lstatSync(path)
+      // npm's root hidden lock records installation state, not runtime package contents.
+      if (key === '.package-lock.json' && info.isFile()) continue
       const mode = info.mode & 0o7777
       if (info.isDirectory()) {
         entries.set(key, { type: 'directory', mode })

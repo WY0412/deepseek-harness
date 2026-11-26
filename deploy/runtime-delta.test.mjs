@@ -34,8 +34,21 @@ test('a later candidate with no additions generates an empty extension', t => {
   assert.deepEqual(stageRuntimeDelta(dirs), { addedPackages: [], addedBytes: 0 })
 })
 
+test('ignores npm installation metadata at the dependency root only', t => {
+  const { dirs, put } = fixture(t)
+  put('baseline', '.package-lock.json', 'old install metadata')
+  put('target', '.package-lock.json', 'new install metadata')
+  put('target', 'new/package.json', '{}')
+  assert.deepEqual(stageRuntimeDelta(dirs), { addedPackages: ['new'], addedBytes: 2 })
+  assert.equal(existsSync(join(dirs.output, '.package-lock.json')), false)
+})
+
 for (const [name, mutate] of [
   ['changed old file', ({ put }) => put('target', '@vendor/old/package.json', '{"changed":true}')],
+  ['changed nested lock file', ({ put }) => {
+    put('baseline', '@vendor/old/.package-lock.json', 'old')
+    put('target', '@vendor/old/.package-lock.json', 'new')
+  }],
   ['removed old file', ({ dirs }) => rmSync(join(dirs.target, '@vendor/old/package.json'))],
   ['addition inside old package', ({ put }) => put('target', '@vendor/old/new.js', 'new')],
   ['changed baseline mode', ({ dirs }) => chmodSync(join(dirs.target, '@vendor/old/package.json'), 0o600)],

@@ -1,5 +1,7 @@
 # Harness runtime image publication
 
+The dependency comparison skips npm's regular root-level `node_modules/.package-lock.json` installation metadata. Files inside installed packages remain subject to the baseline comparison.
+
 Master publishes an incremental runtime image on top of the immutable image in `runtime-base-baseline.json`. The workflow checks the Node image and platform, stages only whole new dependency packages, validates the candidate, and publishes its exact manifest before notifying Pool.
 
 To update the runtime lock, pack the same three tarball directories as CI, set `DSH_RUNTIME_LOCK_SEED` to the previous accepted lock file, then run `node deploy/runtime-lock.mjs --write deploy/runtime-package-lock.json dist/npm dist/npm-vendor dist/npm-landlock` with npm 11.19.0. Review the resulting lock diff. The seed must be a separate path if you need it for later comparison.
