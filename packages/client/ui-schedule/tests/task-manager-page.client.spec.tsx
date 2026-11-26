@@ -256,9 +256,10 @@ it('creates a cluster snapshot from a labelled inline card with structured time 
   expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('值班群')
   expect(within(card).getByRole('button', { name: en['action.destination'] }).textContent).toContain('wechat')
 
-  const policy = within(card).getByRole('combobox', { name: en['action.notificationPolicy'] })
-  expect(policy).toHaveProperty('value', 'changes')
-  fireEvent.change(policy, { target: { value: 'always' } })
+  const policy = within(card).getByRole('button', { name: en['action.notificationPolicy'] })
+  expect(policy.textContent).toContain(en['action.notifyChanges'])
+  fireEvent.click(policy)
+  fireEvent.click(screen.getByRole('menuitem', { name: en['action.notifyAlways'] }))
   fireEvent.click(within(card).getByRole('button', { name: en['action.create'] }))
   const create = vi.mocked(test.props.onCreateAction)
   await waitFor(() => { expect(create).toHaveBeenCalledOnce() })

@@ -31,6 +31,8 @@ import type { CronBuilderState } from './task-cron.ts'
 import { sessionLabel, sessionLinkState } from './session-link.ts'
 import { loadRecentTimeZones, rememberTimeZone } from './recent-time-zones.ts'
 import type { TaskManagerKey } from './task-manager-locales.ts'
+import { NotificationPolicyMenu } from './NotificationPolicyMenu.tsx'
+import type { NotificationPolicy } from './NotificationPolicyMenu.tsx'
 import { TaskMenu } from './TaskMenu.tsx'
 import type { TaskMenuEntry } from './TaskMenu.tsx'
 import css from './TaskManagerPage.module.css'
@@ -456,7 +458,7 @@ export function TaskDetail({
     },
   ]
 
-  const storedValues = ruleValues(task)
+  const storedValues = ruleValues(task, snapshotPolicy(task))
   const propKey = shownValues(storedValues)
   if (trackedIdentity !== taskIdentity) {
     // A shown task's unsaved draft, failure, pending save, and deletion never carry over.
@@ -624,7 +626,7 @@ export function TaskDetail({
   const editDraft = (patch: Partial<TimingDraft>): void => {
     setEdit(current => ({ ...current, shown: { ...current.shown, draft: { ...current.shown.draft, ...patch } } }))
   }
-  const editContent = (patch: Partial<Pick<RuleShown, 'title' | 'prompt'>>): void => {
+  const editContent = (patch: Partial<Pick<RuleShown, 'title' | 'prompt' | 'notificationPolicy'>>): void => {
     setEdit(current => ({ ...current, shown: { ...current.shown, ...patch } }))
   }
   const cancelDraft = (): void => {
@@ -649,6 +651,10 @@ export function TaskDetail({
       // unsaved draft keeps the shown values.
       expected: timingSnapshot(task),
       ...contentChange(shown, storedValues),
+      ...(shown.notificationPolicy !== undefined && storedValues.notificationPolicy !== undefined
+        && shown.notificationPolicy !== storedValues.notificationPolicy
+        ? { notificationPolicy: { expected: storedValues.notificationPolicy, value: shown.notificationPolicy } }
+        : {}),
     }
     let result: RemoteResult<ScheduleUpdateResult>
     try {
@@ -675,7 +681,7 @@ export function TaskDetail({
       setFailure(ruleError(result.value.code))
       return
     }
-    const saved = ruleValues(result.value.record)
+    const saved = ruleValues(result.value.record, shown.notificationPolicy)
     // A refresh that landed while this save was in flight already seeded a newer
     // record. This response describes the record the save submitted, so it must
     // not put those older values back; the newer seed stays authoritative and
@@ -851,6 +857,12 @@ export function TaskDetail({
                 value={shown.prompt}
                 onChange={(event) => { editContent({ prompt: event.target.value }) }}
               />}
+            {shown.notificationPolicy !== undefined && <NotificationPolicyMenu
+              value={shown.notificationPolicy}
+              disabled={busy || pending || task.status === 'inactive'}
+              onChange={(notificationPolicy) => { editContent({ notificationPolicy }) }}
+              t={t}
+            />}
             <RuleCard
               key={JSON.stringify([task.sessionId, task.id])}
               task={task}
@@ -1281,6 +1293,7 @@ interface RuleCardProps extends PropsLocale<'schedule.manager'> {
 
 /** Values one task's detail stages, seeded from one stored record. */
 interface RuleShown {
+  readonly notificationPolicy?: NotificationPolicy | undefined
   /** Task name the heading control edits. */
   readonly title: string
   /** Reminder instruction the instruction control edits. */
@@ -1308,9 +1321,18 @@ interface RuleEdit {
  * @param record - rule to seed from.
  * @returns complete shown values for that rule.
  */
-function ruleValues(record: ScheduleRecord): RuleShown {
+function snapshotPolicy(record: ScheduleRecord): NotificationPolicy | undefined {
+  if (!('execution' in record)) return undefined
+  const { execution } = record as ScheduleTaskCatalogEntry
+  if (execution.kind !== 'action' || execution.provider !== 'cluster-watch') return undefined
+  const { config } = execution
+  return typeof config === 'object' && config !== null && !Array.isArray(config)
+    && config['notification_policy'] === 'always' ? 'always' : 'changes'
+}
+
+function ruleValues(record: ScheduleRecord, notificationPolicy?: NotificationPolicy): RuleShown {
   return {
-    title: record.title, prompt: record.prompt,
+    title: record.title, prompt: record.prompt, notificationPolicy,
     kind: ruleKind(record), draft: timingDraft(record), weekdays: seedWeekdays(record),
   }
 }
@@ -1321,7 +1343,7 @@ function ruleValues(record: ScheduleRecord): RuleShown {
  * @returns a clean draft that equals its stored values.
  */
 function initialRuleEdit(record: ScheduleRecord): RuleEdit {
-  const values = ruleValues(record)
+  const values = ruleValues(record, snapshotPolicy(record))
   return { propKey: shownValues(values), stored: values, shown: values }
 }
 
@@ -1344,7 +1366,7 @@ function timingValues(shown: RuleShown): string {
  * @returns key that changes exactly when one shown value changes.
  */
 function shownValues(shown: RuleShown): string {
-  return JSON.stringify([shown.title.trim(), shown.prompt.trim(), timingValues(shown)])
+  return JSON.stringify([shown.title.trim(), shown.prompt.trim(), shown.notificationPolicy, timingValues(shown)])
 }
 
 /**
@@ -1422,6 +1444,7 @@ export function mergeRuleDraft(authoritative: RuleShown, draft: RuleShown, store
   const text = {
     title: reseedText(draft.title, stored.title, authoritative.title),
     prompt: reseedText(draft.prompt, stored.prompt, authoritative.prompt),
+    notificationPolicy: reseedValue(draft.notificationPolicy, stored.notificationPolicy, authoritative.notificationPolicy),
   }
   // The merged text wins over the draft's own copies: `draft` carries the title
   // and prompt it was staged with, and spreading it last would put those stale

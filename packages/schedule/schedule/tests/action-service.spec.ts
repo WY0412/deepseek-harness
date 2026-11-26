@@ -19,7 +19,7 @@ it('creates a validated recurring action with skip policy and exposes typed task
   const test = await harness({ actionRegistry: true, onContext: ctx => contexts.push(ctx),
     beforeService: async (ctx) => {
       ctx.scheduleActions.register({
-        id: 'cluster-watch', title: 'Cluster watch', config: z.object({ cluster: z.string().min(1) }).strict(),
+        id: 'cluster-watch', title: 'Cluster watch', config: z.object({ cluster: z.string().min(1), notification_policy: z.enum(['changes', 'always']).optional() }).strict(),
         execute: async () => ({ outcome: 'succeeded', code: 'ok', summary: 'ok', notify: false }),
       })
     } })
@@ -37,6 +37,18 @@ it('creates a validated recurring action with skip policy and exposes typed task
     executionHistory: [],
   })
   expect(await test.service.taskCatalog()).toEqual([created])
+  const { sessionId: _owner, status: _status, paused: _paused, missedRunPolicy: _missed, execution: _execution,
+    executionHistory: _history, lastExecution: _last, lastDelivery: _delivery, ...expected } = created
+  const policy = { sessionId, id: created.id, expected }
+  expect(await test.service.update({ ...policy, notificationPolicy: { expected: 'changes', value: 'always' } }))
+    .toMatchObject({ updated: true })
+  expect(await test.service.taskCatalog()).toEqual([{
+    ...created, execution: { ...created.execution, config: { cluster: 'prod', notification_policy: 'always' } },
+  }])
+  expect(await test.service.update({ ...policy, notificationPolicy: { expected: 'changes', value: 'always' } }))
+    .toMatchObject({ updated: false, code: 'schedule_conflict' })
+  expect(await test.service.update({ ...policy, notificationPolicy: { expected: 'always', value: 'changes' } }))
+    .toMatchObject({ updated: true })
   expect(await test.service.catalog()).toEqual([expect.objectContaining({
     id: created.id, sessionId, status: 'active',
   })])

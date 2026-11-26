@@ -564,6 +564,11 @@ export interface ScheduleUpdateRequest extends ScheduleDeleteRequest, ScheduleUp
   readonly expected: ScheduleRecord
   /** New timing; its kind may differ from the stored record's kind, and an omitted value keeps the committed target. */
   readonly change?: ScheduleTimingChange
+  /** Compare and replace the notification policy of a cluster snapshot action. */
+  readonly notificationPolicy?: {
+    readonly expected: 'changes' | 'always'
+    readonly value: 'changes' | 'always'
+  }
 }
 
 /** Compare-and-toggle request for an active task. */

@@ -362,8 +362,15 @@ interface ScheduleUpdateRequest extends ScheduleDeleteRequest, ScheduleUpdateCon
   readonly expected: ScheduleRecord
   /** New timing; its kind may differ from the stored record's kind, and an omitted value keeps the committed target. */
   readonly change?: ScheduleTimingChange
+  /** Compare and replace the notification policy of a cluster snapshot action. */
+  readonly notificationPolicy?: {
+    readonly expected: 'changes' | 'always'
+    readonly value: 'changes' | 'always'
+  }
 }
 ```
+
+The Rules panel can update an existing cluster snapshot’s notification policy. An omitted stored policy is equivalent to `changes`. Saving compares the effective policy, and a policy-only edit preserves the scheduled target, destination, and history.
 
 ```ts type-equiv
 /** Successful current record, non-mutating lookup/conflict failure, or invalid name/instruction/timing. */

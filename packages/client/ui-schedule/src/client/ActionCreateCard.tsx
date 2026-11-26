@@ -8,6 +8,7 @@ import {
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ScheduleAutomationOptions } from '@deepseek-ai/dsh-schedule/client'
 import { ClockPicker } from './ClockPicker.tsx'
+import { NotificationPolicyMenu } from './NotificationPolicyMenu.tsx'
 import { TaskMenu } from './TaskMenu.tsx'
 import type { TaskMenuItem } from './TaskMenu.tsx'
 import css from './ActionCreateCard.module.css'
@@ -100,14 +101,12 @@ export function ActionCreateCard(props: ActionCreateCardProps) {
             />
           </span>
         </label>}
-        {kind === 'cluster-watch' && <label className={css.field}>
-          <span className={css.fieldLabel}>{t('action.notificationPolicy')}</span>
-          <select value={notifyEveryRun ? 'always' : 'changes'} disabled={creating}
-            onChange={event => onNotifyEveryRunChange(event.target.value === 'always')}>
-            <option value="changes">{t('action.notifyChanges')}</option>
-            <option value="always">{t('action.notifyAlways')}</option>
-          </select>
-        </label>}
+        {kind === 'cluster-watch' && <NotificationPolicyMenu
+          value={notifyEveryRun ? 'always' : 'changes'}
+          disabled={creating}
+          onChange={(value) => { onNotifyEveryRunChange(value === 'always') }}
+          t={t}
+        />}
 
         <div className={css.field} onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
           if (event.key !== 'Escape' || !timeOpen) return

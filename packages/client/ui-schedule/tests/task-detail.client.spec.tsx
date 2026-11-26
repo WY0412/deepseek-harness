@@ -108,7 +108,7 @@ function mount(
   status: 'loading' | 'ready' | 'error' = 'ready',
 ) {
   let snapshot: CatalogSnapshot<ScheduleTaskCatalogEntry> = {
-    records: records.map(record => ({
+    records: records.map(record => 'execution' in record ? record as ScheduleTaskCatalogEntry : ({
       ...record,
       paused: false,
       missedRunPolicy: 'deliver_latest',
@@ -150,7 +150,7 @@ function mount(
     update(next: readonly ScheduleCatalogEntry[]) {
       snapshot = {
         ...snapshot,
-        records: next.map(record => ({
+        records: next.map(record => 'execution' in record ? record as ScheduleTaskCatalogEntry : ({
           ...record,
           paused: false,
           missedRunPolicy: 'deliver_latest',
@@ -1017,4 +1017,35 @@ describe('TaskDetail cron rows', () => {
     expect(screen.queryByLabelText(en['rule.cronLabel'])).toBeNull()
     expect(screen.queryByRole('button', { name: en['rule.save'] })).toBeNull()
   })
+})
+
+
+it('saves and reopens the notification policy on an existing cluster snapshot', async () => {
+  const snapshot = {
+    ...daily, paused: false, missedRunPolicy: 'skip', executionHistory: [],
+    execution: {
+      kind: 'action', provider: 'cluster-watch', config: { cluster_id: `c${'a'.repeat(32)}` },
+      destination: { provider: 'im', id: 'opaque', label: 'Ops', kind: 'wechat' },
+    },
+  } satisfies ScheduleTaskCatalogEntry
+  const test = mount([snapshot])
+  selectTask(snapshot.title)
+  const policy = () => screen.getByRole('button', { name: en['action.notificationPolicy'] })
+  expect(policy().textContent).toContain(en['action.notifyChanges'])
+  fireEvent.click(policy())
+  fireEvent.click(screen.getByRole('menuitem', { name: en['action.notifyAlways'] }))
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['rule.save'] })) })
+  expect(test.updateTiming).toHaveBeenCalledWith({
+    id: snapshot.id, sessionId: snapshot.sessionId, expected: timingSnapshot(snapshot),
+    notificationPolicy: { expected: 'changes', value: 'always' },
+  })
+  expect(policy().textContent).toContain(en['action.notifyAlways'])
+  cleanup()
+  const savedSnapshot: ScheduleTaskCatalogEntry = {
+    ...snapshot,
+    execution: { ...snapshot.execution, config: { cluster_id: `c${'a'.repeat(32)}`, notification_policy: 'always' } },
+  }
+  mount([savedSnapshot])
+  selectTask(snapshot.title)
+  expect(policy().textContent).toContain(en['action.notifyAlways'])
 })

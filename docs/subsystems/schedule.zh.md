@@ -362,8 +362,15 @@ interface ScheduleUpdateRequest extends ScheduleDeleteRequest, ScheduleUpdateCon
   readonly expected: ScheduleRecord
   /** New timing; its kind may differ from the stored record's kind, and an omitted value keeps the committed target. */
   readonly change?: ScheduleTimingChange
+  /** Compare and replace the notification policy of a cluster snapshot action. */
+  readonly notificationPolicy?: {
+    readonly expected: 'changes' | 'always'
+    readonly value: 'changes' | 'always'
+  }
 }
 ```
+
+集群定时快照可以在规则面板更新通知策略。缺省等同于 `changes`。保存会比较当前有效策略，单独更改策略时保留既定执行时间、消息目标和运行历史。
 
 ```ts type-equiv
 /** Successful current record, non-mutating lookup/conflict failure, or invalid name/instruction/timing. */

@@ -475,11 +475,32 @@ export class ScheduleService extends TypertRemoteService {
       }
       if (current.status === 'inactive') return { id: request.id, updated: false, code: 'schedule_ended' }
       const result = resolveScheduleUpdate(current.record, request.expected, request.change, Date.now(), request)
-      if (!('record' in result) || !result.updated) return result
-      await tasks.put(request.id, { ...current, record: result.record })
+      if (!('record' in result)) return result
+      let next = current
+      const policy = request.notificationPolicy
+      if (policy !== undefined) {
+        const execution = resolveScheduleTaskCompat(current).execution
+        if (execution.kind !== 'action' || execution.provider !== 'cluster-watch'
+          || typeof execution.config !== 'object' || execution.config === null || Array.isArray(execution.config)
+          || policy === null || (policy.value !== 'changes' && policy.value !== 'always')
+          || (policy.expected !== 'changes' && policy.expected !== 'always')) {
+          return { code: 'invalid_rule', message: 'Invalid cluster snapshot notification policy update.' }
+        }
+        const effectivePolicy = execution.config['notification_policy'] === 'always' ? 'always' : 'changes'
+        if (effectivePolicy !== policy.expected) {
+          return { id: request.id, updated: false, code: 'schedule_conflict' }
+        }
+        if (effectivePolicy !== policy.value) {
+          next = { ...current, execution: {
+            ...execution, config: { ...execution.config, notification_policy: policy.value },
+          } }
+        }
+      }
+      if (!result.updated && next === current) return result
+      await tasks.put(request.id, { ...next, record: result.record })
       this.emitChanged()
       this.runtime?.requestDrive()
-      return result
+      return { ...result, updated: true }
     })
   }
 
