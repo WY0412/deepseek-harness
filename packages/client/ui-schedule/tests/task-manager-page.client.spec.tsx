@@ -164,8 +164,8 @@ const taskCatalogEntry = (record: ScheduleCatalogEntry): ScheduleTaskCatalogEntr
   ...record,
   paused: false,
   missedRunPolicy: 'deliver_latest',
-  execution: { kind: 'prompt', prompt: record.prompt },
-  executionHistory: [],
+  execution: 'execution' in record ? (record as ScheduleTaskCatalogEntry).execution : { kind: 'prompt', prompt: record.prompt },
+  executionHistory: 'executionHistory' in record ? (record as ScheduleTaskCatalogEntry).executionHistory : [],
 })
 
 function mount(
@@ -1163,6 +1163,20 @@ describe('Task manager catalog', () => {
 })
 
 describe.each([['English', en], ['Chinese', zh]] as const)('task detail views in %s', (_name, dictionary) => {
+  it('shows an action execution even when notification was not requested', () => {
+    const task: ScheduleTaskCatalogEntry = {
+      ...taskCatalogEntry(at),
+      execution: { kind: 'action', provider: 'cluster-watch', config: {}, destination: { provider: 'dsh-im', id: 'test', label: 'Ops', kind: 'group' } },
+      executionHistory: [{
+        occurrenceAt: at.scheduledAt, startedAt: at.scheduledAt, finishedAt: at.scheduledAt,
+        outcome: 'succeeded', code: 'baseline', summary: 'Initial snapshot saved', delivery: 'not_requested',
+      }],
+    }
+    mount({ records: [task] }, dictionary)
+    fireEvent.click(screen.getByRole('button', { name: 'Review release' }))
+    fireEvent.click(screen.getByRole('tab', { name: detailViewLabels(dictionary).records }))
+    expect(screen.getByText('Initial snapshot saved')).toBeTruthy()
+  })
   it('opens Rules under the selected task and separates rule fields from saved deliveries', async () => {
     const labels = detailViewLabels(dictionary)
     const h = mount({ records: [{ ...at, lastDelivery: delivery }] }, dictionary)

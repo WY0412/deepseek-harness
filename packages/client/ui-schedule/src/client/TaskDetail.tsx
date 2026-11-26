@@ -11,7 +11,7 @@ import {
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  ScheduleCatalogEntry, ScheduleId, ScheduleRecord, ScheduleTimingChange, ScheduleUpdateContent,
+  ScheduleCatalogEntry, ScheduleId, ScheduleRecord, ScheduleTaskCatalogEntry, ScheduleTimingChange, ScheduleUpdateContent,
   ScheduleUpdateRequest, ScheduleUpdateResult,
 } from '@deepseek-ai/dsh-schedule/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -24,7 +24,7 @@ import type { CatalogDeleteOutcome, CatalogSnapshot } from './catalog-source.ts'
 import { draftZone, secondPrecision, slashDate, timingDraft, timingError, timingSnapshot, zonedWallClock } from './task-timing.ts'
 import type { TaskTimingInjected, TimingDraft } from './task-timing.ts'
 import { useRelativeClock } from './relative-clock.ts'
-import { formatScheduleFrequency, nextRunParts, recordTimeZone, zoneChoices, zoneLabel, zoneName } from './schedule-format.ts'
+import { formatScheduleFrequency, formatScheduleNextRun, nextRunParts, recordTimeZone, zoneChoices, zoneLabel, zoneName } from './schedule-format.ts'
 import type { FrequencyZone } from './schedule-format.ts'
 import { cronPreview, cronShapeExpression, parseCronExpression, recognizeCronShape } from './task-cron.ts'
 import type { CronBuilderState } from './task-cron.ts'
@@ -292,6 +292,8 @@ export function TaskDetail({
   task, authoritative, id, status, deleting, onDelete, onRetry, onUpdateTiming, loadHistory, onOpenSession,
   onEditState, tab, onTabChange, confirmId, onConfirm, onDeleted, onClose, withinSession, useSessions, useWorkspaces, t,
 }: TaskDetailProps): ReactNode {
+  const catalogTask = 'execution' in task ? task as ScheduleTaskCatalogEntry : undefined
+  const actionHistory = catalogTask?.execution.kind === 'action' ? catalogTask.executionHistory : undefined
   const sessions = useSessions(snapshot => snapshot)
   const workspaces = useWorkspaces(snapshot => snapshot)
   const detailTabsRef = useRef<HTMLDivElement>(null)
@@ -869,7 +871,15 @@ export function TaskDetail({
           {/* Deletion removed the saved records with the task, so a deleted
               task mounts no history in the frame before `onDeleted` closes
               this detail: no read is attempted against the removed row. */}
-          {tab === 'records' && !deleted && <DeliveryHistory
+          {tab === 'records' && !deleted && (actionHistory !== undefined ? (
+            actionHistory.length === 0 ? <p>{t('delivery.empty')}</p> : <ul>
+              {[...actionHistory].reverse().map(run => <li key={run.occurrenceAt}>
+                <time dateTime={run.finishedAt}>{formatScheduleNextRun(run.finishedAt, t('time.locale'), recordTimeZone(task))}</time>
+                <p>{t(`execution.${run.outcome}`)} · {t(`execution.delivery.${run.delivery}`)} · {run.code}</p>
+                <p>{run.summary}</p>
+              </li>)}
+            </ul>
+          ) : <DeliveryHistory
             key={JSON.stringify([task.sessionId, task.id])}
             id={task.id}
             sessionId={task.sessionId}
@@ -877,7 +887,7 @@ export function TaskDetail({
             timeZone={recordTimeZone(task)}
             loadHistory={loadHistory}
             t={t}
-          />}
+          />)}
         </div>
       </div>
       {/* A notice about the original Session states its own line under the strip:
