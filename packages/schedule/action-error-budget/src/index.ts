@@ -2,7 +2,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ScheduleActionResult } from '@deepseek-ai/dsh-schedule'
 import { z } from 'zod'
 
-const response = z.object({ outcome: z.enum(['succeeded', 'failed']), code: z.string().min(1), notify: z.boolean(), summary: z.string().max(500), message: z.string().min(1).max(2000).nullable().optional() }).strict()
+const response = z.object({
+  outcome: z.enum(['succeeded', 'failed']),
+  code: z.string().min(1),
+  notify: z.boolean(),
+  summary: z.string().max(500),
+  message: z.string().min(1).max(2000).nullable().optional(),
+  report: z.record(z.string(), z.unknown()).nullable().optional(),
+}).strict()
 
 /** Provider configuration. */
 export interface Config {
