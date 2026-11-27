@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { chromium, errors } from 'playwright'
 import { expect, it } from 'vitest'
-import { summarize } from './repeat-claim-summary.mjs'
+import { summarize } from './repeat-claim-summary.ts'
 
 declare global {
   interface Window {
